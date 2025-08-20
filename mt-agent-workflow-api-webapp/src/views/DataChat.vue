@@ -537,25 +537,123 @@ const sendMessage = async () => {
   updateLoadingText()
   
   try {
-    const response = await api.chat.query({
-      sessionId: currentSession.value.id,
-      question: userMessage,
-      dbConfigId: currentSession.value.databaseId,
-      tableName: currentTable,
-      tools: currentSession.value.tools.map(t => t.id)
+    // 使用fetch直接调用后端接口，处理SSE响应
+    const response = await fetch('/api/chat/send', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        sessionId: currentSession.value.id,
+        question: userMessage,
+        dbConfigId: currentSession.value.databaseId,
+        tableId: currentTable  // 注意：这里改为tableId，与后端一致
+      })
     })
     
-    if (response.data) {
-      // 更新AI消息
-      Object.assign(aiMessage, {
-        content: response.data.answer || '',
-        thinking: response.data.thinking || '',
-        sql: response.data.sql || '',
-        result: response.data.result || null,
-        error: response.data.error || null
-      })
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`)
     }
+    
+    // 读取SSE响应
+    const text = await response.text()
+    console.log('收到响应:', text)
+    
+    // 解析SSE格式的数据
+    const lines = text.split('\n')
+    let thinkingContent = ''
+    let sqlResult = null
+    let errorMessage = null
+    
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].trim()
+      if (line.startsWith('event:')) {
+        const eventType = line.substring(6).trim()
+        const nextLine = lines[i + 1]
+        
+        if (nextLine && nextLine.startsWith('data:')) {
+          const dataStr = nextLine.substring(5).trim()
+          try {
+            const data = JSON.parse(dataStr)
+            
+            if (eventType === 'llm_token') {
+              if (data.type === 'thinking') {
+                thinkingContent = data.content
+                aiMessage.thinking = thinkingContent
+              } else if (data.type === 'sql_result') {
+                // 处理SQL查询结果
+                console.log('SQL查询结果:', data.content)
+                
+                // 尝试解析结果为表格数据
+                if (data.content) {
+                  try {
+                    // 检查是否为Python字典列表格式
+                    if (data.content.includes('[{') && data.content.includes('}]')) {
+                      // 提取并解析Python字典列表
+                      const startIdx = data.content.indexOf('[{')
+                      const endIdx = data.content.lastIndexOf('}]') + 2
+                      const dictListStr = data.content.substring(startIdx, endIdx)
+                      
+                      // 将Python字典格式转换为JSON格式
+                      // 替换Python的单引号为双引号，处理特殊字符
+                      let jsonStr = dictListStr
+                        .replace(/'/g, '"')
+                        .replace(/None/g, 'null')
+                        .replace(/True/g, 'true')
+                        .replace(/False/g, 'false')
+                      
+                      // 尝试解析为JSON
+                      try {
+                        sqlResult = JSON.parse(jsonStr)
+                        aiMessage.result = sqlResult
+                        aiMessage.content = `查询成功，返回 ${sqlResult.length} 条记录`
+                      } catch (parseError) {
+                        console.log('解析JSON失败，使用原始文本:', parseError)
+                        aiMessage.content = data.content
+                      }
+                    } else if (data.content.startsWith('{') || data.content.startsWith('[')) {
+                      // 尝试直接解析为JSON
+                      try {
+                        sqlResult = JSON.parse(data.content)
+                        aiMessage.result = sqlResult
+                        aiMessage.content = `查询成功，返回数据`
+                      } catch (parseError) {
+                        aiMessage.content = data.content
+                      }
+                    } else {
+                      // 普通文本结果
+                      aiMessage.content = data.content
+                    }
+                  } catch (e) {
+                    console.error('处理SQL结果失败:', e)
+                    aiMessage.content = data.content
+                  }
+                }
+              }
+            } else if (eventType === 'error') {
+              errorMessage = data.error
+              aiMessage.error = errorMessage
+            } else if (eventType === 'done') {
+              console.log('处理完成')
+            }
+          } catch (e) {
+            console.error('解析数据失败:', e, dataStr)
+          }
+        }
+      }
+    }
+    
+    // 如果没有内容，设置默认提示
+    if (!aiMessage.content && !aiMessage.error) {
+      if (aiMessage.thinking) {
+        aiMessage.content = '分析完成'
+      } else {
+        aiMessage.content = '处理完成'
+      }
+    }
+    
   } catch (error) {
+    console.error('请求失败:', error)
     aiMessage.error = error.message || '查询失败，请重试'
   } finally {
     isLoading.value = false

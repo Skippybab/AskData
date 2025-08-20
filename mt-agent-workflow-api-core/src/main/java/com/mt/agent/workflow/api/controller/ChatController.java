@@ -212,8 +212,22 @@ public class ChatController {
             String content = (String) requestBody.get("question");
             Object dbConfigIdObj = requestBody.get("dbConfigId");
             Long dbConfigId = dbConfigIdObj != null ? Long.valueOf(dbConfigIdObj.toString()) : null;
+            
+            // 处理tableId参数，可能是数字ID或表名字符串
             Object tableIdObj = requestBody.get("tableId");
-            Long tableId = tableIdObj != null ? Long.valueOf(tableIdObj.toString()) : null;
+            Long tableId = null;
+            if (tableIdObj != null) {
+                String tableIdStr = tableIdObj.toString();
+                // 尝试解析为Long，如果失败则保持为null（表示传递的是表名）
+                try {
+                    tableId = Long.valueOf(tableIdStr);
+                } catch (NumberFormatException e) {
+                    // 如果不是数字，说明传递的是表名，暂时设置为null
+                    // 后续可以根据表名查询表ID
+                    log.info("📨 [ChatController] tableId参数是表名: {}", tableIdStr);
+                    tableId = null;
+                }
+            }
             
             log.info("📨 [ChatController] 解析参数: sessionId={}, content={}, dbConfigId={}, tableId={}", 
                     sessionId, content, dbConfigId, tableId);

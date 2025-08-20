@@ -503,14 +503,14 @@ const sendMessage = async () => {
   updateLoadingText()
   
   try {
-    const response = await fetch('/api/chat/query', {
+    const response = await fetch('/api/chat/send', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${localStorage.getItem('token')}`,
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        sessionId: currentSession.value?.id,
+        sessionId: currentSession.value?.id || Date.now(),
         question: userMessage,
         dbConfigId: selectedDatabase.value,
         tableId: selectedTable.value
@@ -521,27 +521,37 @@ const sendMessage = async () => {
       throw new Error('请求失败')
     }
     
-    // 处理SSE流式响应
-    const reader = response.body.getReader()
-    const decoder = new TextDecoder()
+    // 读取SSE响应
+    const text = await response.text()
+    console.log('收到响应:', text)
     
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
-      
-      const chunk = decoder.decode(value)
-      const lines = chunk.split('\n')
-      
-      for (const line of lines) {
-        if (line.startsWith('data:')) {
-          const data = line.substring(5).trim()
-          if (data) {
-            try {
-              const event = JSON.parse(data)
-              handleStreamEvent(event, aiMessage)
-            } catch (e) {
-              console.error('解析事件失败:', e)
+    // 解析SSE格式的数据
+    const lines = text.split('\n')
+    
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].trim()
+      if (line.startsWith('event:')) {
+        const eventType = line.substring(6).trim()
+        const nextLine = lines[i + 1]
+        
+        if (nextLine && nextLine.startsWith('data:')) {
+          const dataStr = nextLine.substring(5).trim()
+          try {
+            const data = JSON.parse(dataStr)
+            
+            if (eventType === 'llm_token') {
+              if (data.type === 'thinking') {
+                aiMessage.thinking = data.content
+              } else if (data.type === 'sql_result') {
+                handleSqlResult(data, aiMessage)
+              }
+            } else if (eventType === 'error') {
+              aiMessage.error = data.error
+            } else if (eventType === 'done') {
+              console.log('处理完成')
             }
+          } catch (e) {
+            console.error('解析数据失败:', e, dataStr)
           }
         }
       }

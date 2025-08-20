@@ -2,6 +2,7 @@ package com.mt.agent.workflow.api.service.impl;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.mt.agent.workflow.api.dto.DataQuestionResponse;
 import com.mt.agent.workflow.api.dto.PythonExecutionResult;
 import com.mt.agent.workflow.api.entity.ChatMessage;
 import com.mt.agent.workflow.api.service.ChatOrchestratorService;
@@ -54,7 +55,15 @@ public class ChatOrchestratorServiceImpl implements ChatOrchestratorService {
             List<ChatMessage> historyMessages = chatService.getSessionMessages(sessionId, userId);
             saveUserMessage(sessionId, userId, question);
 
-            String allTableNames = tableInfoService.getStandardTableNameFormat(dbConfigId, tableId, userId);
+            String allTableNames;
+            if (tableId != null) {
+                // 如果指定了表ID，获取单个表的信息
+                allTableNames = tableInfoService.getStandardTableNameFormat(dbConfigId, tableId, userId);
+            } else {
+                // 如果没有指定表ID，获取所有启用的表信息
+                allTableNames = tableInfoService.getEnabledTablesDdl(dbConfigId, userId);
+            }
+            
             if (allTableNames == null || allTableNames.isBlank()) {
                 sendError(emitter, "没有找到可用的数据表。请先在数据管理中配置并启用表。");
                 return;
@@ -264,15 +273,15 @@ public class ChatOrchestratorServiceImpl implements ChatOrchestratorService {
     
     @Override
     @Transactional
-    public String processDataQuestionSync(Long sessionId, Long userId, String question, Long dbConfigId, Long tableId) {
+    public DataQuestionResponse processDataQuestionSync(Long sessionId, Long userId, String question, Long dbConfigId, Long tableId) {
         log.info("🔍 [数据问答] 开始处理数据问答(同步版本), sessionId: {}, userId: {}, dbConfigId: {}, tableId: {}", sessionId, userId, dbConfigId, tableId);
         log.info("🔍 [数据问答] 用户问题: {}", question);
-        
-        StringBuilder responseBuilder = new StringBuilder();
         
         // 设置整体超时时间（4分钟，比前端超时时间短）
         long startTime = System.currentTimeMillis();
         long timeoutMs = 4 * 60 * 1000; // 4分钟
+        
+        DataQuestionResponse response = DataQuestionResponse.success(sessionId, null);
         
         try {
             // 1. 保存用户消息
@@ -282,10 +291,18 @@ public class ChatOrchestratorServiceImpl implements ChatOrchestratorService {
             
             // 2. 获取表信息
             log.info("🔍 [数据问答] 步骤2: 获取表信息");
-            String tableInfo = tableInfoService.getStandardTableNameFormat(dbConfigId, tableId, userId);
+            String tableInfo;
+            if (tableId != null) {
+                // 如果指定了表ID，获取单个表的信息
+                tableInfo = tableInfoService.getStandardTableNameFormat(dbConfigId, tableId, userId);
+            } else {
+                // 如果没有指定表ID，获取所有启用的表信息
+                tableInfo = tableInfoService.getEnabledTablesDdl(dbConfigId, userId);
+            }
+            
             if (tableInfo == null || tableInfo.trim().isEmpty()) {
                 log.error("🔍 [数据问答] 获取表信息失败: 表信息为空");
-                return "event: error\ndata: {\"error\":\"未找到表信息\"}\n\n";
+                return DataQuestionResponse.error("未找到表信息");
             }
             log.info("🔍 [数据问答] 表信息获取成功, 长度: {}", tableInfo.length());
             log.debug("🔍 [数据问答] 表信息内容: {}", tableInfo.substring(0, Math.min(200, tableInfo.length())) + "...");
@@ -296,7 +313,7 @@ public class ChatOrchestratorServiceImpl implements ChatOrchestratorService {
             // 检查超时
             if (System.currentTimeMillis() - startTime > timeoutMs) {
                 log.error("🔍 [数据问答] 处理超时，已耗时: {}ms", System.currentTimeMillis() - startTime);
-                return "event: error\ndata: {\"error\":\"处理超时，请稍后重试\"}\n\n";
+                return DataQuestionResponse.error("处理超时，请稍后重试");
             }
             
             List<Map<String, String>> history = new ArrayList<>();
@@ -308,7 +325,7 @@ public class ChatOrchestratorServiceImpl implements ChatOrchestratorService {
                 .block(); // 阻塞等待响应
             if (difyResponse == null || difyResponse.trim().isEmpty()) {
                 log.error("🔍 [数据问答] Dify服务返回空响应");
-                return "event: error\ndata: {\"error\":\"Dify服务返回空响应\"}\n\n";
+                return DataQuestionResponse.error("Dify服务返回空响应");
             }
             log.info("🔍 [数据问答] Dify响应接收成功, 长度: {}", difyResponse.length());
             log.debug("🔍 [数据问答] Dify响应内容: {}", difyResponse.substring(0, Math.min(500, difyResponse.length())) + "...");
@@ -365,7 +382,7 @@ public class ChatOrchestratorServiceImpl implements ChatOrchestratorService {
                 }
             } catch (Exception e) {
                 log.error("🔍 [数据问答] 解析Dify响应失败: {}", e.getMessage(), e);
-                return "event: error\ndata: {\"error\":\"解析Dify响应失败: " + e.getMessage() + "\"}\n\n";
+                return DataQuestionResponse.error("解析Dify响应失败: " + e.getMessage());
             }
             
             // 5. 保存初始助手消息
