@@ -1,0 +1,51 @@
+import { createRouter, createWebHistory } from 'vue-router'
+
+const routes = [
+  {
+    path: '/',
+    redirect: '/login'
+  },
+  {
+    path: '/login',
+    name: 'Login',
+    component: () => import('../views/Login.vue')
+  },
+  {
+    path: '/admin',
+    component: () => import('../views/Layout.vue'),
+    redirect: '/admin/user',
+    children: [
+      {
+        path: 'user',
+        name: 'UserManagement',
+        component: () => import('../views/UserManagement.vue')
+      }
+    ]
+  }
+]
+
+const router = createRouter({
+  history: createWebHistory(),
+  routes
+})
+
+// 路由守卫
+router.beforeEach((to, from, next) => {
+  const isLogin = localStorage.getItem('isLogin')
+  
+  if (to.path === '/login') {
+    if (isLogin) {
+      next('/admin')
+    } else {
+      next()
+    }
+  } else {
+    if (isLogin) {
+      next()
+    } else {
+      next('/login')
+    }
+  }
+})
+
+export default router

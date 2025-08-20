@@ -1,0 +1,127 @@
+package com.mt.agent.workflow.api.controller;
+
+import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.mt.agent.workflow.api.entity.SysUser;
+import com.mt.agent.workflow.api.service.SysUserService;
+import com.mt.agent.workflow.api.util.JwtUtil;
+import com.mt.agent.workflow.api.util.Result;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.HashMap;
+import java.util.Map;
+
+@RestController
+@RequestMapping("/api/user")
+@CrossOrigin
+public class SysUserController {
+    
+    @Autowired
+    private SysUserService userService;
+    @Autowired
+    private JwtUtil jwtUtil;
+    
+    @PostMapping("/login")
+    public Result<Map<String, Object>> login(@RequestBody SysUser loginUser) {
+        try {
+            SysUser user = userService.login(loginUser.getUsername(), loginUser.getPassword());
+            if (user != null) {
+                // 生成JWT token
+                String token = jwtUtil.generateToken(user.getId(), user.getUsername(), 0L);
+                
+                Map<String, Object> result = new HashMap<>();
+                result.put("user", user);
+                result.put("token", token);
+                
+                return Result.success("登录成功", result);
+            } else {
+                return Result.error("用户名或密码错误");
+            }
+        } catch (Exception e) {
+            return Result.error("登录失败：" + e.getMessage());
+        }
+    }
+    
+    @GetMapping("/list")
+    public Result<IPage<SysUser>> list(
+            @RequestParam(defaultValue = "1") Integer current,
+            @RequestParam(defaultValue = "10") Integer size,
+            @RequestParam(required = false) String username,
+            @RequestParam(required = false) String status) {
+        try {
+            Page<SysUser> page = new Page<>(current, size);
+            IPage<SysUser> result = userService.pageList(page, username, status);
+            return Result.success(result);
+        } catch (Exception e) {
+            return Result.error("查询失败：" + e.getMessage());
+        }
+    }
+    
+    @PostMapping("/add")
+    public Result<String> add(@RequestBody SysUser user) {
+        try {
+            if (userService.addUser(user)) {
+                return Result.success("添加成功");
+            } else {
+                return Result.error("添加失败");
+            }
+        } catch (Exception e) {
+            return Result.error("添加失败：" + e.getMessage());
+        }
+    }
+    
+    @PutMapping("/update")
+    public Result<String> update(@RequestBody SysUser user) {
+        try {
+            if (userService.updateUser(user)) {
+                return Result.success("修改成功");
+            } else {
+                return Result.error("修改失败");
+            }
+        } catch (Exception e) {
+            return Result.error("修改失败：" + e.getMessage());
+        }
+    }
+    
+    @DeleteMapping("/{id}")
+    public Result<String> delete(@PathVariable Long id) {
+        try {
+            if (userService.deleteUser(id)) {
+                return Result.success("删除成功");
+            } else {
+                return Result.error("删除失败");
+            }
+        } catch (Exception e) {
+            return Result.error("删除失败：" + e.getMessage());
+        }
+    }
+    
+    @PutMapping("/status")
+    public Result<String> updateStatus(@RequestParam Long id, @RequestParam String status) {
+        try {
+            if (userService.updateStatus(id, status)) {
+                return Result.success("状态更新成功");
+            } else {
+                return Result.error("状态更新失败");
+            }
+        } catch (Exception e) {
+            return Result.error("状态更新失败：" + e.getMessage());
+        }
+    }
+    
+    @GetMapping("/{id}")
+    public Result<SysUser> getById(@PathVariable Long id) {
+        try {
+            SysUser user = userService.getById(id);
+            if (user != null) {
+                user.setPassword(null);
+                return Result.success(user);
+            } else {
+                return Result.error("用户不存在");
+            }
+        } catch (Exception e) {
+            return Result.error("查询失败：" + e.getMessage());
+        }
+    }
+}

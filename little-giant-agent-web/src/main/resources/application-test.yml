@@ -1,0 +1,109 @@
+spring:
+  application:
+    name: mt-little-giant-agent-web
+
+  # 数据库配置
+  datasource:
+    url: jdbc:mysql://rm-7xv29oc5w125d296iyo.mysql.rds.aliyuncs.com:3306/mt_cultivation?rewriteBatchedStatements=true&characterEncoding=utf-8&serverTimezone=Asia/Shanghai
+    username: mobirit_test
+    password: Mobirit1709!
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+  # Flyway数据库迁移配置
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    locations: classpath:db/migration
+    validate-on-migrate: false
+    clean-disabled: true
+
+  # Spring AI配置
+  ai:
+    # 阿里云通义千问配置
+    dashscope:
+      apikey: ${DASHSCOPE_API_KEY:sk-7f3db520a32e40d2a83e7141e5ddc300}
+
+    ollama:
+      base-url: http://192.168.1.105:11434
+
+    siliconFlow:
+      apikey: ${SILICONFLOW_API_KEY:sk-svltxreamtmjtacfhaqntztrmnffolnnuiombzhprrduqymj}
+
+# Coze API配置
+coze:
+  api:
+    # Coze API Token，建议通过环境变量设置
+    token: ${COZE_API_TOKEN:pat_3Gplhdv6l15TVUoz4pSXvtNrA54iZ9oFWDiYH00BlERGCdoC6CSJCd91HPw7wRQo}
+    # Coze API Base URL，根据账户区域选择
+    # 中国区域: https://api.coze.cn
+    # 国际区域: https://api.coze.com
+    base-url: ${COZE_BASE_URL:https://api.coze.cn}
+    # API调用超时时间（毫秒）
+    timeout: ${COZE_TIMEOUT:1000000}
+
+dify:
+  api:
+    baseUrl: "http://113.45.193.155:8888/v1"
+    apiKey: "app-TxiNiLXqeVGJP6IeQPc3Bd6a"
+    timeout: 1000000
+    connectTimeout: 1000000
+    readTimeout: 1000000
+
+  # 新增：多工作流配置
+  workflows:
+    # 工作流1：关键词提取
+    keyWordExtraction:
+      name: "keyWordExtraction"
+      baseUrl: "http://113.45.193.155:8888/v1"
+      apiKey: "app-I8SNQjaGPBdwRgBDSRnQIliB"
+      timeout: 1000000
+      connectTimeout: 1000000
+      readTimeout: 1000000
+      description: "多分类器"
+
+    # 工作流2：行业知识匹配
+    industryKnowledgeMatching:
+      name: "industryKnowledgeMatching"
+      baseUrl: "http://113.45.193.155:8888/v1"
+      apiKey: "app-RitPpfg1ssGYsfT6ncL3MfNw"
+      timeout: 800000
+      connectTimeout: 800000
+      readTimeout: 800000
+      description: "行业知识检索"
+
+
+
+# MyBatis-Plus配置
+mybatis-plus:
+  mapper-locations: classpath*:/mapper/**/*.xml
+  type-aliases-package: com.mt.agent.model
+  configuration:
+    map-underscore-to-camel-case: true
+    log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl
+  global-config:
+    enable-sql-runner: true
+    db-config:
+      id-type: auto
+      table-underline: true
+
+# 服务器配置
+server:
+  port: 9713
+  servlet:
+    context-path: /
+    session:
+      timeout: 240m
+
+# 日志配置
+logging:
+  level:
+    root: INFO
+    com.mt.agent: DEBUG
+    org.springframework.ai: DEBUG
+    com.baomidou.mybatisplus: DEBUG
+
+# 禁用 Elasticsearch 健康检查
+management:
+  health:
+    elasticsearch:
+      enabled: false
