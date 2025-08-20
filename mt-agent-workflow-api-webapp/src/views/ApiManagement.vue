@@ -1,683 +1,860 @@
 <template>
   <div class="api-management">
-    <el-card class="box-card">
-      <template #header>
-        <div class="card-header">
-          <span>接口管理</span>
-          <el-tag type="success" size="small" style="margin-left: 10px;">
-            管理您的数据问答API接口
-          </el-tag>
-        </div>
-      </template>
+    <!-- 页面标题 -->
+    <div class="page-header">
+      <h1 class="page-title">
+        <i class="el-icon-link"></i>
+        接口管理
+      </h1>
+      <p class="page-subtitle">创建和管理数据问答API接口</p>
+    </div>
 
-      <!-- 搜索和操作栏 -->
-      <div class="search-bar">
-        <div class="search-left">
-          <el-input
-            v-model="searchForm.apiName"
-            placeholder="请输入API名称"
-            style="width: 200px; margin-right: 10px;"
-            clearable
-          />
-          <el-select
-            v-model="searchForm.status"
-            placeholder="请选择状态"
-            style="width: 120px; margin-right: 10px;"
-            clearable
-          >
-            <el-option label="启用" :value="1" />
-            <el-option label="禁用" :value="0" />
-          </el-select>
-          <el-button type="primary" @click="handleSearch">
-            <el-icon><Search /></el-icon>
-            搜索
+    <!-- 主内容区 -->
+    <div class="content-wrapper">
+      <!-- 工具栏 -->
+      <div class="toolbar">
+        <div class="toolbar-left">
+          <el-button type="primary" @click="showCreateDialog = true" class="create-btn">
+            <i class="el-icon-plus"></i>
+            创建API接口
           </el-button>
-          <el-button @click="handleReset">重置</el-button>
         </div>
-        <div class="search-right">
-          <el-button type="primary" @click="handleAdd">
-            <el-icon><Plus /></el-icon>
-            创建API
-          </el-button>
+        
+        <div class="toolbar-right">
+          <el-input
+            v-model="searchKeyword"
+            placeholder="搜索API名称或路径"
+            prefix-icon="el-icon-search"
+            clearable
+            style="width: 300px"
+          />
         </div>
       </div>
 
-      <!-- API表格 -->
-      <el-table
-        :data="tableData"
-        v-loading="loading"
-        style="width: 100%"
-        border
-      >
-        <el-table-column prop="id" label="ID" width="60" />
-        <el-table-column prop="apiName" label="API名称" min-width="120" />
-        <el-table-column prop="apiPath" label="API路径" min-width="150">
-          <template #default="{ row }">
-            <el-tag type="info" size="small">{{ row.apiPath }}</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column prop="apiKey" label="API密钥" min-width="200">
-          <template #default="{ row }">
-            <div class="api-key-cell">
-              <span v-if="!row.showKey">{{ maskApiKey(row.apiKey) }}</span>
-              <span v-else>{{ row.apiKey }}</span>
-              <el-button
-                type="text"
-                size="small"
-                @click="toggleKeyVisibility(row)"
-              >
-                <el-icon>
-                  <component :is="row.showKey ? 'Hide' : 'View'" />
-                </el-icon>
-              </el-button>
-              <el-button
-                type="text"
-                size="small"
-                @click="copyApiKey(row.apiKey)"
-              >
-                <el-icon><CopyDocument /></el-icon>
-              </el-button>
+      <!-- API列表 -->
+      <div class="api-grid">
+        <div 
+          v-for="api in filteredApis" 
+          :key="api.id"
+          class="api-card"
+          :class="{ 'active': api.status === 1 }"
+        >
+          <!-- 卡片头部 -->
+          <div class="card-header">
+            <div class="api-name">
+              <i class="el-icon-api-icon"></i>
+              {{ api.apiName }}
             </div>
-          </template>
-        </el-table-column>
-        <el-table-column prop="dbName" label="数据库" min-width="100" />
-        <el-table-column prop="tableName" label="数据表" min-width="100" />
-        <el-table-column prop="status" label="状态" width="80">
-          <template #default="{ row }">
-            <el-tag :type="row.status === 1 ? 'success' : 'danger'" size="small">
-              {{ row.status === 1 ? '启用' : '禁用' }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column prop="callCount" label="调用次数" width="90" />
-        <el-table-column prop="rateLimit" label="速率限制" width="100">
-          <template #default="{ row }">
-            {{ row.rateLimit }}次/分钟
-          </template>
-        </el-table-column>
-        <el-table-column label="操作" width="280" fixed="right">
-          <template #default="{ row }">
+            <el-switch
+              v-model="api.status"
+              :active-value="1"
+              :inactive-value="0"
+              @change="updateApiStatus(api)"
+              class="status-switch"
+            />
+          </div>
+
+          <!-- API信息 -->
+          <div class="card-body">
+            <div class="info-item">
+              <span class="info-label">API路径:</span>
+              <span class="info-value api-path">
+                /open-api/v2/{{ api.apiPath }}
+                <el-button
+                  type="text"
+                  size="mini"
+                  @click="copyApiPath(api)"
+                  class="copy-btn"
+                >
+                  <i class="el-icon-copy-document"></i>
+                </el-button>
+              </span>
+            </div>
+            
+            <div class="info-item">
+              <span class="info-label">API密钥:</span>
+              <span class="info-value api-key">
+                <span v-if="!api.showKey">{{ maskApiKey(api.apiKey) }}</span>
+                <span v-else>{{ api.apiKey }}</span>
+                <el-button
+                  type="text"
+                  size="mini"
+                  @click="api.showKey = !api.showKey"
+                  class="toggle-btn"
+                >
+                  <i :class="api.showKey ? 'el-icon-view' : 'el-icon-hide'"></i>
+                </el-button>
+                <el-button
+                  type="text"
+                  size="mini"
+                  @click="copyApiKey(api)"
+                  class="copy-btn"
+                >
+                  <i class="el-icon-copy-document"></i>
+                </el-button>
+              </span>
+            </div>
+            
+            <div class="info-item">
+              <span class="info-label">数据库:</span>
+              <span class="info-value">{{ api.databaseName || '-' }}</span>
+            </div>
+            
+            <div class="info-item">
+              <span class="info-label">数据表:</span>
+              <span class="info-value">{{ api.tableName || '所有表' }}</span>
+            </div>
+            
+            <div class="info-item">
+              <span class="info-label">频率限制:</span>
+              <span class="info-value">{{ api.rateLimit }} 次/分钟</span>
+            </div>
+            
+            <div class="info-item">
+              <span class="info-label">超时时间:</span>
+              <span class="info-value">{{ api.timeout }} 秒</span>
+            </div>
+          </div>
+
+          <!-- 统计信息 -->
+          <div class="card-stats">
+            <div class="stat-item">
+              <span class="stat-value">{{ api.callCount || 0 }}</span>
+              <span class="stat-label">总调用次数</span>
+            </div>
+            <div class="stat-item">
+              <span class="stat-value">{{ api.todayCount || 0 }}</span>
+              <span class="stat-label">今日调用</span>
+            </div>
+            <div class="stat-item">
+              <span class="stat-value">{{ formatLastCallTime(api.lastCallTime) }}</span>
+              <span class="stat-label">最后调用</span>
+            </div>
+          </div>
+
+          <!-- 操作按钮 -->
+          <div class="card-footer">
             <el-button
+              type="text"
               size="small"
-              type="primary"
-              @click="handleEdit(row)"
+              @click="showApiDoc(api)"
             >
+              <i class="el-icon-document"></i>
+              查看文档
+            </el-button>
+            <el-button
+              type="text"
+              size="small"
+              @click="testApi(api)"
+            >
+              <i class="el-icon-position"></i>
+              测试接口
+            </el-button>
+            <el-button
+              type="text"
+              size="small"
+              @click="editApi(api)"
+            >
+              <i class="el-icon-edit"></i>
               编辑
             </el-button>
             <el-button
+              type="text"
               size="small"
-              :type="row.status === 1 ? 'warning' : 'success'"
-              @click="handleStatusChange(row)"
+              @click="regenerateKey(api)"
             >
-              {{ row.status === 1 ? '禁用' : '启用' }}
+              <i class="el-icon-refresh"></i>
+              重置密钥
             </el-button>
             <el-button
+              type="text"
               size="small"
-              type="info"
-              @click="handleViewDoc(row)"
+              class="danger-btn"
+              @click="deleteApi(api)"
             >
-              文档
-            </el-button>
-            <el-button
-              size="small"
-              type="danger"
-              @click="handleDelete(row)"
-            >
+              <i class="el-icon-delete"></i>
               删除
             </el-button>
-          </template>
-        </el-table-column>
-      </el-table>
+          </div>
+        </div>
 
-      <!-- 分页 -->
-      <div class="pagination">
-        <el-pagination
-          v-model:current-page="currentPage"
-          v-model:page-size="pageSize"
-          :page-sizes="[10, 20, 50, 100]"
-          :total="total"
-          layout="total, sizes, prev, pager, next, jumper"
-          @size-change="handleSizeChange"
-          @current-change="handleCurrentChange"
-        />
+        <!-- 空状态 -->
+        <div v-if="filteredApis.length === 0" class="empty-state">
+          <i class="el-icon-connection"></i>
+          <p>暂无API接口</p>
+          <el-button type="primary" @click="showCreateDialog = true">
+            创建第一个API接口
+          </el-button>
+        </div>
       </div>
-    </el-card>
+    </div>
 
-    <!-- 新增/编辑API对话框 -->
+    <!-- 创建API弹窗 -->
     <el-dialog
-      v-model="dialogVisible"
-      :title="dialogTitle"
+      title="创建API接口"
+      v-model="showCreateDialog"
       width="600px"
-      @close="handleDialogClose"
+      class="create-dialog"
     >
-      <el-form
-        ref="formRef"
-        :model="form"
-        :rules="rules"
-        label-width="100px"
-      >
-        <el-form-item label="API名称" prop="apiName">
-          <el-input v-model="form.apiName" placeholder="请输入API名称" />
+      <el-form :model="apiForm" label-width="120px">
+        <el-form-item label="接口名称" required>
+          <el-input 
+            v-model="apiForm.apiName" 
+            placeholder="请输入接口名称，例如：销售数据查询接口"
+          />
         </el-form-item>
-        <el-form-item label="API路径" prop="apiPath">
-          <el-input v-model="form.apiPath" placeholder="请输入API路径，如：user-query">
-            <template #prepend>/open-api/v1/query/</template>
-          </el-input>
+        
+        <el-form-item label="接口描述">
+          <el-input 
+            v-model="apiForm.description" 
+            type="textarea"
+            rows="3"
+            placeholder="请输入接口描述"
+          />
         </el-form-item>
-        <el-form-item label="数据库" prop="dbConfigId">
-          <el-select
-            v-model="form.dbConfigId"
-            placeholder="请选择数据库"
+        
+        <el-form-item label="数据库" required>
+          <el-select 
+            v-model="apiForm.dbConfigId" 
+            placeholder="选择数据库"
             @change="onDbChange"
             style="width: 100%"
           >
             <el-option
-              v-for="db in dbConfigs"
+              v-for="db in databases"
               :key="db.id"
               :label="db.name"
               :value="db.id"
             />
           </el-select>
         </el-form-item>
-        <el-form-item label="数据表" prop="tableId">
-          <el-select
-            v-model="form.tableId"
-            placeholder="请选择数据表"
+        
+        <el-form-item label="数据表">
+          <el-select 
+            v-model="apiForm.tableId" 
+            placeholder="选择数据表（可选，不选则可访问所有表）"
             style="width: 100%"
-            :loading="loadingTables"
+            clearable
           >
             <el-option
-              v-for="table in tables"
+              v-for="table in availableTables"
               :key="table.id"
-              :label="table.tableName"
+              :label="`${table.tableName} ${table.tableComment ? '(' + table.tableComment + ')' : ''}`"
               :value="table.id"
             />
           </el-select>
         </el-form-item>
-        <el-form-item label="速率限制" prop="rateLimit">
-          <el-input-number
-            v-model="form.rateLimit"
-            :min="0"
+        
+        <el-form-item label="频率限制">
+          <el-input-number 
+            v-model="apiForm.rateLimit" 
+            :min="0" 
             :max="1000"
-            placeholder="每分钟最大请求数"
+            style="width: 200px"
           />
-          <span style="margin-left: 10px;">次/分钟（0表示无限制）</span>
+          <span style="margin-left: 10px">次/分钟（0表示不限制）</span>
         </el-form-item>
-        <el-form-item label="超时时间" prop="timeout">
-          <el-input-number
-            v-model="form.timeout"
-            :min="5"
+        
+        <el-form-item label="超时时间">
+          <el-input-number 
+            v-model="apiForm.timeout" 
+            :min="5" 
             :max="300"
-            placeholder="请求超时时间"
+            style="width: 200px"
           />
-          <span style="margin-left: 10px;">秒</span>
-        </el-form-item>
-        <el-form-item label="状态" prop="status">
-          <el-radio-group v-model="form.status">
-            <el-radio :label="1">启用</el-radio>
-            <el-radio :label="0">禁用</el-radio>
-          </el-radio-group>
-        </el-form-item>
-        <el-form-item label="描述" prop="description">
-          <el-input
-            v-model="form.description"
-            type="textarea"
-            placeholder="请输入API描述"
-            :rows="3"
-          />
+          <span style="margin-left: 10px">秒</span>
         </el-form-item>
       </el-form>
+      
       <template #footer>
-        <div class="dialog-footer">
-          <el-button @click="dialogVisible = false">取消</el-button>
-          <el-button type="primary" :loading="submitLoading" @click="handleSubmit">
-            确定
-          </el-button>
-        </div>
+        <el-button @click="showCreateDialog = false">取消</el-button>
+        <el-button type="primary" @click="createApi">创建</el-button>
       </template>
     </el-dialog>
 
-    <!-- API文档对话框 -->
+    <!-- API文档弹窗 -->
     <el-dialog
-      v-model="docDialogVisible"
-      title="API接口文档"
+      title="API文档"
+      v-model="showDocDialog"
       width="800px"
+      class="doc-dialog"
     >
       <div class="api-doc" v-if="currentApi">
-        <el-descriptions :column="1" border>
-          <el-descriptions-item label="API名称">{{ currentApi.apiName }}</el-descriptions-item>
-          <el-descriptions-item label="请求地址">
-            <el-tag type="info">POST</el-tag>
-            <code>{{ getFullApiUrl(currentApi.apiPath) }}</code>
-          </el-descriptions-item>
-          <el-descriptions-item label="API密钥">
-            <code>{{ currentApi.apiKey }}</code>
-            <el-button
-              type="text"
-              size="small"
-              @click="copyApiKey(currentApi.apiKey)"
-            >
-              <el-icon><CopyDocument /></el-icon>
-              复制
-            </el-button>
-          </el-descriptions-item>
-          <el-descriptions-item label="速率限制">{{ currentApi.rateLimit }}次/分钟</el-descriptions-item>
-          <el-descriptions-item label="超时时间">{{ currentApi.timeout }}秒</el-descriptions-item>
-        </el-descriptions>
+        <h3>接口信息</h3>
+        <div class="doc-section">
+          <p><strong>接口地址：</strong>{{ getFullApiUrl(currentApi) }}</p>
+          <p><strong>请求方法：</strong>POST</p>
+          <p><strong>Content-Type：</strong>application/json</p>
+          <p><strong>认证方式：</strong>请求头 X-API-Key</p>
+        </div>
 
-        <h4 style="margin-top: 20px;">请求示例</h4>
-        <el-card shadow="never">
-          <pre><code>{{ getRequestExample(currentApi) }}</code></pre>
-        </el-card>
+        <h3>请求示例</h3>
+        <div class="code-example">
+          <pre><code>{{ getApiExample(currentApi) }}</code></pre>
+        </div>
 
-        <h4 style="margin-top: 20px;">响应示例</h4>
-        <el-card shadow="never">
+        <h3>响应示例</h3>
+        <div class="code-example">
           <pre><code>{{ getResponseExample() }}</code></pre>
-        </el-card>
-
-        <h4 style="margin-top: 20px;">错误码说明</h4>
-        <el-table :data="errorCodes" border>
-          <el-table-column prop="code" label="错误码" width="100" />
-          <el-table-column prop="message" label="说明" />
-        </el-table>
+        </div>
       </div>
     </el-dialog>
   </div>
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { apiConfigApi } from '../api/apiConfig.js'
-import { dbApi } from '../api/db.js'
 
-const loading = ref(false)
-const submitLoading = ref(false)
-const dialogVisible = ref(false)
-const docDialogVisible = ref(false)
-const isEdit = ref(false)
-const loadingTables = ref(false)
+// 数据
+const apis = ref([])
+const databases = ref([])
+const availableTables = ref([])
+const searchKeyword = ref('')
 
-const tableData = ref([])
-const currentPage = ref(1)
-const pageSize = ref(10)
-const total = ref(0)
-
-const dbConfigs = ref([])
-const tables = ref([])
+// 弹窗控制
+const showCreateDialog = ref(false)
+const showDocDialog = ref(false)
 const currentApi = ref(null)
 
-const searchForm = reactive({
+// 表单数据
+const apiForm = ref({
   apiName: '',
-  status: null
-})
-
-const form = reactive({
-  id: null,
-  apiName: '',
-  apiPath: '',
+  description: '',
   dbConfigId: null,
   tableId: null,
-  description: '',
-  status: 1,
   rateLimit: 60,
   timeout: 30
 })
 
-const rules = computed(() => ({
-  apiName: [
-    { required: true, message: '请输入API名称', trigger: 'blur' }
-  ],
-  apiPath: [
-    { required: true, message: '请输入API路径', trigger: 'blur' },
-    { pattern: /^[a-z0-9-]+$/, message: 'API路径只能包含小写字母、数字和横线', trigger: 'blur' }
-  ],
-  dbConfigId: [
-    { required: true, message: '请选择数据库', trigger: 'change' }
-  ],
-  tableId: [
-    { required: true, message: '请选择数据表', trigger: 'change' }
-  ]
-}))
-
-const errorCodes = [
-  { code: '200', message: '请求成功' },
-  { code: '400', message: '请求参数错误' },
-  { code: '401', message: 'API密钥无效' },
-  { code: '403', message: 'API已禁用' },
-  { code: '404', message: 'API不存在' },
-  { code: '429', message: '请求过于频繁' },
-  { code: '500', message: '服务器内部错误' }
-]
-
-const formRef = ref()
-
-const dialogTitle = computed(() => {
-  return isEdit.value ? '编辑API' : '创建API'
+// 计算属性
+const filteredApis = computed(() => {
+  if (!searchKeyword.value) return apis.value
+  
+  const keyword = searchKeyword.value.toLowerCase()
+  return apis.value.filter(api => 
+    api.apiName.toLowerCase().includes(keyword) ||
+    api.apiPath.toLowerCase().includes(keyword)
+  )
 })
 
-// 获取API列表
-const getApiList = async () => {
-  loading.value = true
+// 生命周期
+onMounted(() => {
+  loadApis()
+  loadDatabases()
+})
+
+// 方法
+const loadApis = async () => {
   try {
-    const params = {
-      current: currentPage.value,
-      size: pageSize.value,
-      apiName: searchForm.apiName || undefined,
-      status: searchForm.status
-    }
-    const res = await apiConfigApi.getApiConfigPage(params)
-    if (res.code === 200) {
-      tableData.value = res.data.records.map(item => ({
-        ...item,
+    const response = await fetch('/api/api-config/list', {
+      headers: {
+        'Authorization': `Bearer ${localStorage.getItem('token')}`
+      }
+    })
+    const result = await response.json()
+    if (result.code === 200) {
+      apis.value = result.data.map(api => ({
+        ...api,
         showKey: false
       }))
-      total.value = res.data.total
+    }
+  } catch (error) {
+    console.error('加载API列表失败:', error)
+    ElMessage.error('加载API列表失败')
+  }
+}
+
+const loadDatabases = async () => {
+  try {
+    const response = await fetch('/api/db/list', {
+      headers: {
+        'Authorization': `Bearer ${localStorage.getItem('token')}`
+      }
+    })
+    const result = await response.json()
+    if (result.code === 200) {
+      databases.value = result.data.filter(db => db.status === 1)
+    }
+  } catch (error) {
+    console.error('加载数据库失败:', error)
+  }
+}
+
+const onDbChange = async (dbId) => {
+  if (!dbId) {
+    availableTables.value = []
+    return
+  }
+  
+  try {
+    const response = await fetch(`/api/db/schema/tables?dbConfigId=${dbId}`, {
+      headers: {
+        'Authorization': `Bearer ${localStorage.getItem('token')}`
+      }
+    })
+    const result = await response.json()
+    if (result.code === 200) {
+      availableTables.value = result.data.filter(table => table.enabled !== false)
+    }
+  } catch (error) {
+    console.error('加载表列表失败:', error)
+  }
+}
+
+const createApi = async () => {
+  if (!apiForm.value.apiName || !apiForm.value.dbConfigId) {
+    ElMessage.warning('请填写必填项')
+    return
+  }
+  
+  try {
+    const response = await fetch('/api/api-config/create', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${localStorage.getItem('token')}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(apiForm.value)
+    })
+    const result = await response.json()
+    if (result.code === 200) {
+      ElMessage.success('API创建成功')
+      showCreateDialog.value = false
+      loadApis()
       
-      // 获取数据库和表名称
-      for (let item of tableData.value) {
-        const db = dbConfigs.value.find(d => d.id === item.dbConfigId)
-        if (db) {
-          item.dbName = db.name
-          // 获取表名
-          const tablesRes = await dbApi.getTables(item.dbConfigId)
-          if (tablesRes.code === 200) {
-            const table = tablesRes.data.find(t => t.id === item.tableId)
-            if (table) {
-              item.tableName = table.tableName
-            }
-          }
-        }
+      // 重置表单
+      apiForm.value = {
+        apiName: '',
+        description: '',
+        dbConfigId: null,
+        tableId: null,
+        rateLimit: 60,
+        timeout: 30
       }
-    }
-  } catch (error) {
-    ElMessage.error('获取API列表失败')
-  } finally {
-    loading.value = false
-  }
-}
-
-// 获取数据库配置列表
-const getDbConfigs = async () => {
-  try {
-    const res = await dbApi.getDbConfigs()
-    if (res.code === 200) {
-      dbConfigs.value = res.data
-    }
-  } catch (error) {
-    ElMessage.error('获取数据库列表失败')
-  }
-}
-
-// 数据库改变时获取表列表
-const onDbChange = async (dbConfigId) => {
-  form.tableId = null
-  tables.value = []
-  if (!dbConfigId) return
-  
-  loadingTables.value = true
-  try {
-    const res = await dbApi.getTables(dbConfigId)
-    if (res.code === 200) {
-      tables.value = res.data.filter(t => t.enabled)
-    }
-  } catch (error) {
-    ElMessage.error('获取数据表列表失败')
-  } finally {
-    loadingTables.value = false
-  }
-}
-
-// 搜索
-const handleSearch = () => {
-  currentPage.value = 1
-  getApiList()
-}
-
-// 重置
-const handleReset = () => {
-  searchForm.apiName = ''
-  searchForm.status = null
-  currentPage.value = 1
-  getApiList()
-}
-
-// 新增
-const handleAdd = () => {
-  isEdit.value = false
-  Object.assign(form, {
-    id: null,
-    apiName: '',
-    apiPath: '',
-    dbConfigId: null,
-    tableId: null,
-    description: '',
-    status: 1,
-    rateLimit: 60,
-    timeout: 30
-  })
-  tables.value = []
-  dialogVisible.value = true
-}
-
-// 编辑
-const handleEdit = async (row) => {
-  isEdit.value = true
-  Object.assign(form, {
-    id: row.id,
-    apiName: row.apiName,
-    apiPath: row.apiPath,
-    dbConfigId: row.dbConfigId,
-    tableId: row.tableId,
-    description: row.description,
-    status: row.status,
-    rateLimit: row.rateLimit,
-    timeout: row.timeout
-  })
-  
-  // 加载表列表
-  if (row.dbConfigId) {
-    await onDbChange(row.dbConfigId)
-    form.tableId = row.tableId
-  }
-  
-  dialogVisible.value = true
-}
-
-// 提交
-const handleSubmit = async () => {
-  await formRef.value.validate()
-  
-  submitLoading.value = true
-  try {
-    let res
-    if (isEdit.value) {
-      res = await apiConfigApi.updateApiConfig(form.id, form)
     } else {
-      res = await apiConfigApi.createApiConfig(form)
-    }
-    
-    if (res.code === 200) {
-      ElMessage.success(isEdit.value ? '更新成功' : '创建成功')
-      dialogVisible.value = false
-      getApiList()
-    } else {
-      ElMessage.error(res.msg || '操作失败')
+      ElMessage.error(result.message || '创建失败')
     }
   } catch (error) {
-    ElMessage.error('操作失败')
-  } finally {
-    submitLoading.value = false
+    console.error('创建API失败:', error)
+    ElMessage.error('创建失败')
   }
 }
 
-// 切换状态
-const handleStatusChange = async (row) => {
+const updateApiStatus = async (api) => {
   try {
-    const res = await apiConfigApi.toggleApiStatus(row.id)
-    if (res.code === 200) {
-      ElMessage.success('状态切换成功')
-      getApiList()
+    const response = await fetch(`/api/api-config/status/${api.id}`, {
+      method: 'PUT',
+      headers: {
+        'Authorization': `Bearer ${localStorage.getItem('token')}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ status: api.status })
+    })
+    const result = await response.json()
+    if (result.code === 200) {
+      ElMessage.success(api.status === 1 ? 'API已启用' : 'API已禁用')
     } else {
-      ElMessage.error(res.msg || '操作失败')
+      api.status = api.status === 1 ? 0 : 1 // 回滚
+      ElMessage.error(result.message || '更新失败')
     }
   } catch (error) {
-    ElMessage.error('操作失败')
+    api.status = api.status === 1 ? 0 : 1 // 回滚
+    ElMessage.error('更新失败')
   }
 }
 
-// 删除
-const handleDelete = (row) => {
-  ElMessageBox.confirm(
-    `确定要删除API"${row.apiName}"吗？`,
-    '提示',
-    {
-      confirmButtonText: '确定',
-      cancelButtonText: '取消',
-      type: 'warning'
-    }
-  ).then(async () => {
-    try {
-      const res = await apiConfigApi.deleteApiConfig(row.id)
-      if (res.code === 200) {
-        ElMessage.success('删除成功')
-        getApiList()
-      } else {
-        ElMessage.error(res.msg || '删除失败')
-      }
-    } catch (error) {
-      ElMessage.error('删除失败')
-    }
-  })
-}
-
-// 查看文档
-const handleViewDoc = (row) => {
-  currentApi.value = row
-  docDialogVisible.value = true
-}
-
-// 对话框关闭
-const handleDialogClose = () => {
-  formRef.value.resetFields()
-}
-
-// 分页
-const handleSizeChange = (val) => {
-  pageSize.value = val
-  getApiList()
-}
-
-const handleCurrentChange = (val) => {
-  currentPage.value = val
-  getApiList()
-}
-
-// 遮罩API密钥
 const maskApiKey = (key) => {
   if (!key) return ''
   return key.substring(0, 10) + '****' + key.substring(key.length - 4)
 }
 
-// 切换密钥可见性
-const toggleKeyVisibility = (row) => {
-  row.showKey = !row.showKey
+const copyApiPath = (api) => {
+  const fullPath = `/open-api/v2/${api.apiPath}`
+  navigator.clipboard.writeText(fullPath)
+  ElMessage.success('API路径已复制')
 }
 
-// 复制API密钥
-const copyApiKey = (key) => {
-  navigator.clipboard.writeText(key).then(() => {
-    ElMessage.success('已复制到剪贴板')
-  }).catch(() => {
-    ElMessage.error('复制失败')
-  })
+const copyApiKey = (api) => {
+  navigator.clipboard.writeText(api.apiKey)
+  ElMessage.success('API密钥已复制')
 }
 
-// 获取完整API URL
-const getFullApiUrl = (path) => {
-  return `${window.location.origin}/open-api/v1/query/${path}`
+const formatLastCallTime = (time) => {
+  if (!time) return '从未'
+  const date = new Date(time)
+  const now = new Date()
+  const diff = now - date
+  
+  if (diff < 60000) return '刚刚'
+  if (diff < 3600000) return `${Math.floor(diff / 60000)}分钟前`
+  if (diff < 86400000) return `${Math.floor(diff / 3600000)}小时前`
+  return date.toLocaleDateString('zh-CN')
 }
 
-// 获取请求示例
-const getRequestExample = (api) => {
-  return `curl -X POST "${getFullApiUrl(api.apiPath)}" \\
+const showApiDoc = (api) => {
+  currentApi.value = api
+  showDocDialog.value = true
+}
+
+const getFullApiUrl = (api) => {
+  return `${window.location.origin}/open-api/v2/intelligent-query`
+}
+
+const getApiExample = (api) => {
+  return `curl -X POST ${getFullApiUrl(api)} \\
+  -H "X-API-Key: ${api.apiKey}" \\
   -H "Content-Type: application/json" \\
   -d '{
-    "apiKey": "${api.apiKey}",
-    "question": "查询最近7天的销售数据"
+    "question": "查询本月销售额最高的10个产品",
+    "dbConfigId": ${api.dbConfigId},
+    "tableId": ${api.tableId || 'null'}
   }'`
 }
 
-// 获取响应示例
 const getResponseExample = () => {
   return `{
   "code": 200,
-  "msg": "success",
+  "message": "success",
   "data": {
     "success": true,
-    "thinking": "正在分析您的问题...",
-    "data": "查询结果...",
-    "structuredData": "{...}",
-    "apiPath": "user-query",
-    "sessionId": 12345,
-    "executionTime": 1523
+    "sessionId": "session_123456",
+    "question": "查询本月销售额最高的10个产品",
+    "sql": "SELECT product_name, SUM(amount) as total FROM ...",
+    "data": [
+      {
+        "product_name": "产品A",
+        "total": 100000
+      },
+      ...
+    ],
+    "executionTime": 1523,
+    "timestamp": "2024-01-15T10:30:45"
   }
 }`
 }
 
-onMounted(() => {
-  getDbConfigs()
-  getApiList()
-})
+const testApi = (api) => {
+  // TODO: 实现API测试功能
+  ElMessage.info('测试功能开发中')
+}
+
+const editApi = (api) => {
+  // TODO: 实现编辑功能
+  ElMessage.info('编辑功能开发中')
+}
+
+const regenerateKey = async (api) => {
+  await ElMessageBox.confirm('重置密钥后原密钥将失效，确定要重置吗？', '确认重置', {
+    confirmButtonText: '确定',
+    cancelButtonText: '取消',
+    type: 'warning'
+  })
+  
+  try {
+    const response = await fetch(`/api/api-config/regenerate-key/${api.id}`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${localStorage.getItem('token')}`
+      }
+    })
+    const result = await response.json()
+    if (result.code === 200) {
+      ElMessage.success('密钥已重置')
+      loadApis()
+    } else {
+      ElMessage.error(result.message || '重置失败')
+    }
+  } catch (error) {
+    ElMessage.error('重置失败')
+  }
+}
+
+const deleteApi = async (api) => {
+  await ElMessageBox.confirm('确定要删除这个API接口吗？', '确认删除', {
+    confirmButtonText: '确定',
+    cancelButtonText: '取消',
+    type: 'warning'
+  })
+  
+  try {
+    const response = await fetch(`/api/api-config/${api.id}`, {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${localStorage.getItem('token')}`
+      }
+    })
+    const result = await response.json()
+    if (result.code === 200) {
+      ElMessage.success('删除成功')
+      loadApis()
+    } else {
+      ElMessage.error(result.message || '删除失败')
+    }
+  } catch (error) {
+    ElMessage.error('删除失败')
+  }
+}
 </script>
 
-<style scoped>
+<style scoped lang="scss">
 .api-management {
   padding: 20px;
-}
-
-.card-header {
-  display: flex;
-  align-items: center;
-}
-
-.search-bar {
-  display: flex;
-  justify-content: space-between;
-  margin-bottom: 20px;
-}
-
-.search-left {
-  display: flex;
-  align-items: center;
-}
-
-.pagination {
-  margin-top: 20px;
-  display: flex;
-  justify-content: flex-end;
-}
-
-.api-key-cell {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-}
-
-.api-doc pre {
-  background: #f5f7fa;
-  padding: 15px;
-  border-radius: 4px;
-  overflow-x: auto;
-}
-
-.api-doc code {
-  font-family: 'Courier New', monospace;
-  font-size: 13px;
-}
-
-.api-doc h4 {
-  color: #303133;
-  margin-bottom: 10px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  min-height: 100vh;
+  
+  .page-header {
+    text-align: center;
+    color: white;
+    margin-bottom: 30px;
+    
+    .page-title {
+      font-size: 32px;
+      font-weight: 300;
+      margin: 0;
+      letter-spacing: 2px;
+      
+      i {
+        font-size: 36px;
+        margin-right: 10px;
+      }
+    }
+    
+    .page-subtitle {
+      font-size: 14px;
+      opacity: 0.9;
+      margin-top: 10px;
+    }
+  }
+  
+  .content-wrapper {
+    max-width: 1400px;
+    margin: 0 auto;
+    
+    .toolbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+      
+      .create-btn {
+        background: white;
+        color: #667eea;
+        border: none;
+        border-radius: 20px;
+        padding: 10px 20px;
+        font-weight: 500;
+        
+        &:hover {
+          background: #f0f0f0;
+        }
+      }
+    }
+    
+    .api-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
+      gap: 20px;
+      
+      .api-card {
+        background: white;
+        border-radius: 15px;
+        padding: 20px;
+        box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+        transition: all 0.3s ease;
+        
+        &:hover {
+          transform: translateY(-5px);
+          box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+        }
+        
+        &.active {
+          border: 2px solid #667eea;
+        }
+        
+        .card-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: 15px;
+          padding-bottom: 15px;
+          border-bottom: 1px solid #f0f0f0;
+          
+          .api-name {
+            font-size: 18px;
+            font-weight: 500;
+            color: #333;
+            
+            i {
+              margin-right: 8px;
+              color: #667eea;
+            }
+          }
+          
+          .status-switch {
+            --el-switch-on-color: #667eea;
+          }
+        }
+        
+        .card-body {
+          margin-bottom: 15px;
+          
+          .info-item {
+            display: flex;
+            align-items: center;
+            margin-bottom: 10px;
+            font-size: 13px;
+            
+            .info-label {
+              color: #666;
+              width: 80px;
+              flex-shrink: 0;
+            }
+            
+            .info-value {
+              color: #333;
+              flex: 1;
+              display: flex;
+              align-items: center;
+              
+              &.api-path,
+              &.api-key {
+                font-family: 'Monaco', 'Menlo', monospace;
+                font-size: 12px;
+                background: #f5f5f5;
+                padding: 2px 8px;
+                border-radius: 4px;
+              }
+              
+              .copy-btn,
+              .toggle-btn {
+                margin-left: 5px;
+                padding: 0;
+                font-size: 14px;
+                color: #999;
+                
+                &:hover {
+                  color: #667eea;
+                }
+              }
+            }
+          }
+        }
+        
+        .card-stats {
+          display: flex;
+          justify-content: space-around;
+          padding: 15px 0;
+          margin: 15px 0;
+          border-top: 1px solid #f0f0f0;
+          border-bottom: 1px solid #f0f0f0;
+          
+          .stat-item {
+            text-align: center;
+            
+            .stat-value {
+              display: block;
+              font-size: 20px;
+              font-weight: 500;
+              color: #667eea;
+              margin-bottom: 5px;
+            }
+            
+            .stat-label {
+              font-size: 12px;
+              color: #999;
+            }
+          }
+        }
+        
+        .card-footer {
+          display: flex;
+          justify-content: space-between;
+          gap: 5px;
+          
+          .el-button {
+            padding: 0;
+            font-size: 13px;
+            
+            i {
+              margin-right: 3px;
+            }
+          }
+          
+          .danger-btn {
+            color: #f56c6c;
+            
+            &:hover {
+              color: #f23c3c;
+            }
+          }
+        }
+      }
+      
+      .empty-state {
+        grid-column: 1 / -1;
+        text-align: center;
+        padding: 80px 20px;
+        background: white;
+        border-radius: 15px;
+        
+        i {
+          font-size: 64px;
+          color: #ddd;
+        }
+        
+        p {
+          margin: 20px 0;
+          font-size: 16px;
+          color: #999;
+        }
+      }
+    }
+  }
+  
+  .doc-dialog {
+    .api-doc {
+      h3 {
+        color: #333;
+        margin: 20px 0 10px;
+        
+        &:first-child {
+          margin-top: 0;
+        }
+      }
+      
+      .doc-section {
+        background: #f8f8f8;
+        padding: 15px;
+        border-radius: 5px;
+        margin-bottom: 20px;
+        
+        p {
+          margin: 5px 0;
+          
+          strong {
+            color: #666;
+          }
+        }
+      }
+      
+      .code-example {
+        background: #2d2d2d;
+        color: #f8f8f2;
+        padding: 15px;
+        border-radius: 5px;
+        overflow-x: auto;
+        
+        pre {
+          margin: 0;
+          
+          code {
+            font-family: 'Monaco', 'Menlo', monospace;
+            font-size: 13px;
+          }
+        }
+      }
+    }
+  }
 }
 </style>

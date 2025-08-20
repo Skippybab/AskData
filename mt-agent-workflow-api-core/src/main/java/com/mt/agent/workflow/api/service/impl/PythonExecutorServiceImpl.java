@@ -473,6 +473,9 @@ public class PythonExecutorServiceImpl implements PythonExecutorService {
         // 检测是否需要自动调用函数
         String functionCall = detectAndGenerateFunctionCall(userPythonCode);
 
+        // 动态结果识别逻辑
+        String dynamicResultHandler = generateDynamicResultHandler();
+
         return "# -*- coding: utf-8 -*-\n"
              + "import json\n"
              + "import sys\n"
@@ -487,29 +490,8 @@ public class PythonExecutorServiceImpl implements PythonExecutorService {
              + processedUserCode
              + "        # 自动调用检测到的函数\n"
              + functionCall
-             + "        # 确保有最终输出\n"
-             + "        if 'total_profit' in locals():\n"
-             + "            print(f\"计算结果: {total_profit}\")\n"
-             + "        elif 'result' in locals():\n"
-             + "            # 将查询结果转换为JSON格式返回给前端\n"
-             + "            if isinstance(result, list) and len(result) > 0:\n"
-             + "                # 构造前端期望的JSON格式\n"
-             + "                response_data = {\n"
-             + "                    \"dataType\": \"python_dict_list\",\n"
-             + "                    \"parsedData\": json.dumps(result, ensure_ascii=False)\n"
-             + "                }\n"
-             + "                print(json.dumps(response_data, ensure_ascii=False))\n"
-             + "            elif result is not None:\n"
-             + "                # 对于单个值的结果，也构造JSON格式\n"
-             + "                response_data = {\n"
-             + "                    \"dataType\": \"python_dict_list\",\n"
-             + "                    \"parsedData\": json.dumps([{\"value\": result}], ensure_ascii=False)\n"
-             + "                }\n"
-             + "                print(json.dumps(response_data, ensure_ascii=False))\n"
-             + "            else:\n"
-             + "                print(f\"查询结果: {result}\")\n"
-             + "        elif 'average_profit' in locals():\n"
-             + "            print(f\"平均利润: {average_profit}\")\n"
+             + "        # 动态识别并输出结果\n"
+             + dynamicResultHandler
              + "        bridge.report_step(\"Python代码执行完成\\n\")\n"
              + "    except Exception as e:\n"
              + "        print(f\"Execution failed: {e}\", file=sys.stderr)\n"
@@ -517,6 +499,139 @@ public class PythonExecutorServiceImpl implements PythonExecutorService {
              + "        sys.exit(1)\n\n"
              + "if __name__ == '__main__':\n"
              + "    main()\n";
+    }
+
+    /**
+     * 生成动态结果识别处理器
+     * 能够智能识别用户代码中定义的变量并输出
+     */
+    private String generateDynamicResultHandler() {
+        return """
+                # 动态识别并输出用户定义的变量
+                local_vars = locals()
+                # 过滤掉系统变量和函数
+                system_vars = {'bridge', 'report', 'execute_query_and_get_json', 'gen_sql', 
+                              'json', 'sys', 'traceback', 'main', 'local_vars', 
+                              'processedUserCode', 'functionCall', 'dynamicResultHandler'}
+                
+                user_vars = {}
+                for k, v in local_vars.items():
+                    if not k.startswith('_') and k not in system_vars and not callable(v):
+                        user_vars[k] = v
+                
+                # 记录检测到的用户变量（用于调试）
+                if user_vars:
+                    print(f"DEBUG: 检测到用户变量: {list(user_vars.keys())}", file=sys.stderr)
+                
+                # 查找可能的结果变量（优先级从高到低）
+                result_var = None
+                result_value = None
+                
+                # 常见的结果变量名模式
+                common_result_names = ['result', 'results', 'data', 'query_result', 'sql_result', 
+                                      'net_profit_margin', 'total_profit', 'average_profit',
+                                      'profit', 'revenue', 'sales', 'amount', 'count', 'sum', 'avg',
+                                      'margin', 'growth_rate', 'ratio', 'percentage', 'total', 'value']
+                
+                # 首先查找常见的结果变量名
+                for var_name in common_result_names:
+                    if var_name in user_vars:
+                        result_var = var_name
+                        result_value = user_vars[var_name]
+                        print(f"DEBUG: 找到常见结果变量: {var_name}", file=sys.stderr)
+                        break
+                
+                # 如果没找到常见变量名，查找包含特定后缀的变量
+                if result_var is None:
+                    result_suffixes = ['_result', '_data', '_list', '_margin', '_profit', '_revenue',
+                                      '_sales', '_amount', '_count', '_sum', '_avg', '_total',
+                                      '_ratio', '_rate', '_percentage', '_value']
+                    for var_name, var_value in user_vars.items():
+                        for suffix in result_suffixes:
+                            if var_name.lower().endswith(suffix):
+                                result_var = var_name
+                                result_value = var_value
+                                print(f"DEBUG: 找到后缀匹配变量: {var_name}", file=sys.stderr)
+                                break
+                        if result_var:
+                            break
+                
+                # 如果还是没找到，查找包含数据的变量（list, dict类型）
+                if result_var is None:
+                    for var_name, var_value in user_vars.items():
+                        if isinstance(var_value, (list, dict)) and var_value:
+                            result_var = var_name
+                            result_value = var_value
+                            print(f"DEBUG: 找到数据类型变量: {var_name}", file=sys.stderr)
+                            break
+                
+                # 最后选择第一个非空的用户变量
+                if result_var is None and user_vars:
+                    for var_name, var_value in user_vars.items():
+                        if var_value is not None and var_value != "":
+                            result_var = var_name
+                            result_value = var_value
+                            print(f"DEBUG: 使用第一个非空变量: {var_name}", file=sys.stderr)
+                            break
+                
+                # 输出结果
+                if result_var is not None and result_value is not None:
+                    try:
+                        # 构造统一的响应格式
+                        response_data = {
+                            "success": True,
+                            "dataType": "python_result",
+                            "variableName": result_var,
+                            "variableType": type(result_value).__name__
+                        }
+                        
+                        # 根据数据类型处理
+                        if isinstance(result_value, list):
+                            response_data["dataType"] = "python_dict_list"
+                            response_data["parsedData"] = json.dumps(result_value, ensure_ascii=False, default=str)
+                            response_data["rowCount"] = len(result_value)
+                            print(f"DEBUG: 输出列表类型结果，长度: {len(result_value)}", file=sys.stderr)
+                        elif isinstance(result_value, dict):
+                            response_data["dataType"] = "python_dict"
+                            response_data["parsedData"] = json.dumps(result_value, ensure_ascii=False, default=str)
+                            print(f"DEBUG: 输出字典类型结果", file=sys.stderr)
+                        elif isinstance(result_value, (int, float)):
+                            response_data["dataType"] = "python_number"
+                            response_data["parsedData"] = json.dumps({result_var: result_value}, ensure_ascii=False)
+                            response_data["value"] = result_value
+                            print(f"DEBUG: 输出数值类型结果: {result_value}", file=sys.stderr)
+                        elif isinstance(result_value, str):
+                            response_data["dataType"] = "python_string"
+                            response_data["parsedData"] = json.dumps({result_var: result_value}, ensure_ascii=False)
+                            response_data["value"] = result_value
+                            print(f"DEBUG: 输出字符串类型结果", file=sys.stderr)
+                        else:
+                            # 尝试转换为JSON
+                            try:
+                                response_data["parsedData"] = json.dumps(result_value, ensure_ascii=False, default=str)
+                                print(f"DEBUG: 输出其他类型结果", file=sys.stderr)
+                            except:
+                                response_data["parsedData"] = str(result_value)
+                                print(f"DEBUG: 输出结果转换为字符串", file=sys.stderr)
+                        
+                        # 输出JSON结果
+                        print(json.dumps(response_data, ensure_ascii=False))
+                        
+                    except Exception as e:
+                        print(f"ERROR: 结果序列化失败: {e}", file=sys.stderr)
+                        # 降级输出
+                        print(f"{result_var}: {result_value}")
+                else:
+                    # 没有找到结果变量
+                    response_data = {
+                        "success": False,
+                        "dataType": "no_result",
+                        "message": "代码执行完成，但未找到结果变量",
+                        "availableVars": list(user_vars.keys()) if user_vars else []
+                    }
+                    print(json.dumps(response_data, ensure_ascii=False))
+                    print(f"DEBUG: 未找到结果变量，可用变量: {list(user_vars.keys())}", file=sys.stderr)
+                """.replace("                ", "        ");  // 调整缩进以匹配main函数内部
     }
 
     /**
