@@ -64,6 +64,11 @@ public class PythonExecutorServiceImpl implements PythonExecutorService {
     public PythonExecutionResult executePythonCodeWithResult(Long messageId, Long dbConfigId) {
         log.info("🐍 [Python执行器] 开始执行Python代码, messageId: {}, dbConfigId: {}", messageId, dbConfigId);
         
+        // 验证Python环境
+        if (!validatePythonEnvironment()) {
+            return PythonExecutionResult.failure("Python环境验证失败，请检查Python安装和依赖包", "ENVIRONMENT_ERROR");
+        }
+        
         ChatMessage chatMessage = chatMessageMapper.selectById(messageId);
         if (chatMessage == null || chatMessage.getPythonCode() == null || chatMessage.getPythonCode().trim().isEmpty()) {
             log.error("🐍 [Python执行器] 未找到消息或Python代码为空, messageId: {}", messageId);
@@ -172,6 +177,149 @@ public class PythonExecutorServiceImpl implements PythonExecutorService {
     }
 
     /**
+     * 验证Python环境
+     */
+    private boolean validatePythonEnvironment() {
+        try {
+            log.info("🔍 [Python环境验证] 开始验证Python环境");
+            
+            // 检查Python解释器是否可用
+            ProcessBuilder checkPython = new ProcessBuilder(pythonExecutablePath, "--version");
+            Process process = checkPython.start();
+            boolean finished = process.waitFor(10, TimeUnit.SECONDS);
+            
+            if (!finished) {
+                log.error("🔍 [Python环境验证] Python版本检查超时");
+                return false;
+            }
+            
+            int exitCode = process.exitValue();
+            if (exitCode != 0) {
+                log.error("🔍 [Python环境验证] Python版本检查失败, exitCode: {}", exitCode);
+                return false;
+            }
+            
+            // 读取Python版本信息
+            try (BufferedReader reader = new BufferedReader(
+                    new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
+                String version = reader.readLine();
+                log.info("🔍 [Python环境验证] Python版本: {}", version);
+            }
+            
+            // 检查必要的依赖包
+            if (!checkPythonDependencies()) {
+                log.error("🔍 [Python环境验证] Python依赖包检查失败");
+                return false;
+            }
+            
+            log.info("🔍 [Python环境验证] Python环境验证成功");
+            return true;
+            
+        } catch (Exception e) {
+            log.error("🔍 [Python环境验证] Python环境验证失败", e);
+            return false;
+        }
+    }
+
+    /**
+     * 检查Python依赖包
+     */
+    private boolean checkPythonDependencies() {
+        try {
+            log.info("🔍 [Python依赖检查] 开始检查Python依赖包");
+            
+            // 创建依赖检查脚本
+            String dependencyCheckScript = """
+                    import sys
+                    import importlib
+                    import os
+                    
+                    # 设置UTF-8编码
+                    if hasattr(sys.stdout, 'reconfigure'):
+                        sys.stdout.reconfigure(encoding='utf-8')
+                    if hasattr(sys.stderr, 'reconfigure'):
+                        sys.stderr.reconfigure(encoding='utf-8')
+                    
+                    required_packages = ['pymysql', 'json', 'traceback']
+                    missing_packages = []
+                    
+                    for package in required_packages:
+                        try:
+                            importlib.import_module(package)
+                            print(f"[OK] {package} - 已安装")
+                        except ImportError:
+                            missing_packages.append(package)
+                            print(f"[ERROR] {package} - 未安装")
+                    
+                    if missing_packages:
+                        print(f"\\n缺少以下依赖包: {', '.join(missing_packages)}")
+                        print("请运行以下命令安装:")
+                        for package in missing_packages:
+                            if package == 'pymysql':
+                                print(f"pip install {package}")
+                        sys.exit(1)
+                    else:
+                        print("\\n所有依赖包检查通过")
+                        sys.exit(0)
+                    """;
+            
+            // 创建临时文件
+            Path tempFile = Files.createTempFile("dependency_check", ".py");
+            Files.writeString(tempFile, dependencyCheckScript, StandardCharsets.UTF_8);
+            
+            // 执行依赖检查
+            ProcessBuilder checkDeps = new ProcessBuilder(pythonExecutablePath, tempFile.toString());
+            Process process = checkDeps.start();
+            
+            // 读取输出
+            StringBuilder output = new StringBuilder();
+            try (BufferedReader reader = new BufferedReader(
+                    new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    output.append(line).append("\n");
+                    log.debug("🔍 [Python依赖检查] {}", line);
+                }
+            }
+            
+            // 读取错误输出
+            StringBuilder error = new StringBuilder();
+            try (BufferedReader errorReader = new BufferedReader(
+                    new InputStreamReader(process.getErrorStream(), StandardCharsets.UTF_8))) {
+                String line;
+                while ((line = errorReader.readLine()) != null) {
+                    error.append(line).append("\n");
+                    log.debug("🔍 [Python依赖检查] 错误: {}", line);
+                }
+            }
+            
+            boolean finished = process.waitFor(30, TimeUnit.SECONDS);
+            if (!finished) {
+                log.error("🔍 [Python依赖检查] 依赖检查超时");
+                process.destroyForcibly();
+                return false;
+            }
+            
+            int exitCode = process.exitValue();
+            log.info("🔍 [Python依赖检查] 依赖检查完成, exitCode: {}, 输出: {}", exitCode, output.toString().trim());
+            
+            if (exitCode != 0) {
+                log.error("🔍 [Python依赖检查] 依赖检查失败: {}", error.toString().trim());
+                return false;
+            }
+            
+            // 清理临时文件
+            Files.deleteIfExists(tempFile);
+            
+            return true;
+            
+        } catch (Exception e) {
+            log.error("🔍 [Python依赖检查] 依赖检查过程中发生错误", e);
+            return false;
+        }
+    }
+
+    /**
      * 分析Python执行错误
      */
     private PythonExecutionResult analyzePythonExecutionError(int exitCode, String pythonCode) {
@@ -181,16 +329,30 @@ public class PythonExecutorServiceImpl implements PythonExecutorService {
         // 根据退出码和可能的错误信息进行分类
         if (exitCode == 1) {
             errorType = "RUNTIME_ERROR";
-            errorMessage = "Python代码运行时错误";
+            errorMessage = "Python代码运行时错误，可能的原因：\n" +
+                           "1. 缺少必要的Python包（如pymysql）\n" +
+                           "2. 数据库连接配置错误\n" +
+                           "3. 代码语法或逻辑错误\n" +
+                           "4. 文件权限问题\n" +
+                           "请检查Python环境和依赖包安装情况";
         } else if (exitCode == 2) {
             errorType = "SYNTAX_ERROR";
-            errorMessage = "Python代码语法错误";
+            // 检查是否是try-except语法错误
+            if (pythonCode != null && pythonCode.contains("try:") && !pythonCode.contains("except")) {
+                errorMessage = "Python代码语法错误：检测到try块但缺少except块\n" +
+                              "解决方案：\n" +
+                              "1. 为try块添加对应的except块\n" +
+                              "2. 或者移除try块，直接执行代码\n" +
+                              "3. 系统已自动尝试修复此问题，如果仍有错误请手动检查代码";
+            } else {
+                errorMessage = "Python代码语法错误，请检查代码语法";
+            }
         } else if (exitCode == 126) {
             errorType = "PERMISSION_ERROR";
-            errorMessage = "Python执行权限错误";
+            errorMessage = "Python执行权限错误，请检查文件权限";
         } else if (exitCode == 127) {
             errorType = "COMMAND_NOT_FOUND";
-            errorMessage = "Python解释器未找到";
+            errorMessage = "Python解释器未找到，请检查Python环境配置";
         }
 
         return PythonExecutionResult.failure(errorMessage, errorType);
@@ -480,25 +642,63 @@ public class PythonExecutorServiceImpl implements PythonExecutorService {
              + "import json\n"
              + "import sys\n"
              + "import traceback\n"
-             + "from java_bridge import bridge, report\n"
-             + "from system_functions import *\n"
-             + "from db_executor import execute_query_and_get_json, gen_sql\n\n"
-             + "def main():\n"
-             + "    try:\n"
-             + "        bridge.report_step(\"开始执行Python代码\\n\")\n"
-             + "        # 执行用户代码\n"
+             + "import subprocess\n"
+             + "import importlib\n"
+             + "import os\n\n"
+             + "# 设置UTF-8编码\n"
+             + "if hasattr(sys.stdout, 'reconfigure'):\n"
+             + "    sys.stdout.reconfigure(encoding='utf-8')\n"
+             + "if hasattr(sys.stderr, 'reconfigure'):\n"
+             + "    sys.stderr.reconfigure(encoding='utf-8')\n\n"
+             + "def check_and_install_dependencies():\n"
+             + "    \"\"\"检查并安装必要的依赖包\"\"\"\n"
+             + "    required_packages = ['pymysql']\n"
+             + "    missing_packages = []\n"
+             + "    \n"
+             + "    for package in required_packages:\n"
+             + "        try:\n"
+             + "            importlib.import_module(package)\n"
+             + "            print(f\"INFO: {package} 已安装\")\n"
+             + "        except ImportError:\n"
+             + "            missing_packages.append(package)\n"
+             + "    \n"
+             + "    if missing_packages:\n"
+             + "        error_msg = f\"缺少必要的Python包: {', '.join(missing_packages)}\\n\"\n"
+             + "        error_msg += f\"请运行以下命令安装:\\n\"\n"
+             + "        for package in missing_packages:\n"
+             + "            if package == 'pymysql':\n"
+             + "                error_msg += f\"pip install {package}\\n\"\n"
+             + "        print(f\"ERROR: {error_msg}\", file=sys.stderr)\n"
+             + "        return False\n"
+             + "    return True\n\n"
+             + "try:\n"
+             + "    # 检查依赖包\n"
+             + "    if not check_and_install_dependencies():\n"
+             + "        sys.exit(1)\n"
+             + "    \n"
+             + "    from java_bridge import bridge, report\n"
+             + "    from system_functions import *\n"
+             + "    from db_executor import execute_query_and_get_json, gen_sql\n\n"
+             + "    def main():\n"
+             + "        try:\n"
+             + "            bridge.report_step(\"开始执行Python代码\\n\")\n"
+             + "            # 执行用户代码\n"
              + processedUserCode
-             + "        # 自动调用检测到的函数\n"
+             + "            # 自动调用检测到的函数\n"
              + functionCall
-             + "        # 动态识别并输出结果\n"
+             + "            # 动态识别并输出结果\n"
              + dynamicResultHandler
-             + "        bridge.report_step(\"Python代码执行完成\\n\")\n"
-             + "    except Exception as e:\n"
-             + "        print(f\"Execution failed: {e}\", file=sys.stderr)\n"
-             + "        traceback.print_exc(file=sys.stderr)\n"
-             + "        sys.exit(1)\n\n"
-             + "if __name__ == '__main__':\n"
-             + "    main()\n";
+             + "            bridge.report_step(\"Python代码执行完成\\n\")\n"
+             + "        except Exception as e:\n"
+             + "            print(f\"Execution failed: {e}\", file=sys.stderr)\n"
+             + "            traceback.print_exc(file=sys.stderr)\n"
+             + "            sys.exit(1)\n\n"
+             + "    if __name__ == '__main__':\n"
+             + "        main()\n"
+             + "except Exception as e:\n"
+             + "    print(f\"Python环境初始化失败: {e}\", file=sys.stderr)\n"
+             + "    traceback.print_exc(file=sys.stderr)\n"
+             + "    sys.exit(1)\n";
     }
 
     /**
@@ -745,7 +945,7 @@ public class PythonExecutorServiceImpl implements PythonExecutorService {
     }
 
     /**
-     * 预处理用户Python代码，确保正确的缩进和格式
+     * 预处理用户Python代码，确保正确的缩进和格式，并修复语法问题
      */
     private String preprocessUserCode(String userPythonCode) {
         if (userPythonCode == null || userPythonCode.trim().isEmpty()) {
@@ -759,7 +959,30 @@ public class PythonExecutorServiceImpl implements PythonExecutorService {
         // 找到第一个非空行的缩进作为基准
         int baseIndent = findBaseIndent(lines);
 
+        // 检查并修复try-except块
+        boolean hasTryBlock = false;
+        boolean hasExceptBlock = false;
+        int tryBlockIndent = -1;
+
+        // 第一遍扫描：检查try-except结构
         for (String line : lines) {
+            String trimmedLine = line.trim();
+            if (trimmedLine.startsWith("try:")) {
+                hasTryBlock = true;
+                tryBlockIndent = getIndentLevel(line);
+            } else if (trimmedLine.startsWith("except") && hasTryBlock) {
+                hasExceptBlock = true;
+            }
+        }
+
+        // 如果检测到不完整的try块，记录警告
+        if (hasTryBlock && !hasExceptBlock) {
+            log.warn("⚠️ [代码预处理] 检测到用户代码包含try块但缺少except块，将自动添加except块");
+        }
+
+        // 第二遍扫描：处理代码并修复语法
+        for (int i = 0; i < lines.length; i++) {
+            String line = lines[i];
             if (line.trim().isEmpty()) {
                 // 保留空行
                 processedCode.append("\n");
@@ -771,6 +994,30 @@ public class PythonExecutorServiceImpl implements PythonExecutorService {
                 // 添加基础缩进（8个空格，因为在main() -> try -> 用户代码）加上相对缩进
                 String indent = "        " + " ".repeat(relativeIndent);
                 processedCode.append(indent).append(line.trim()).append("\n");
+
+                // 如果检测到try块但没有except块，在适当位置添加except块
+                if (hasTryBlock && !hasExceptBlock && line.trim().startsWith("try:")) {
+                    // 找到try块的结束位置（下一个相同或更少缩进的行）
+                    int tryBlockEnd = i + 1;
+                    while (tryBlockEnd < lines.length) {
+                        String nextLine = lines[tryBlockEnd];
+                        if (!nextLine.trim().isEmpty()) {
+                            int nextIndent = getIndentLevel(nextLine);
+                            if (nextIndent <= tryBlockIndent) {
+                                break;
+                            }
+                        }
+                        tryBlockEnd++;
+                    }
+
+                    // 在try块结束后添加except块
+                    if (tryBlockEnd < lines.length) {
+                        processedCode.append(indent).append("except Exception as e:\n");
+                        processedCode.append(indent).append("    print(f\"用户代码执行错误: {e}\", file=sys.stderr)\n");
+                        processedCode.append(indent).append("    raise e\n");
+                        hasExceptBlock = true; // 标记已添加except块
+                    }
+                }
             }
         }
 
@@ -817,7 +1064,8 @@ public class PythonExecutorServiceImpl implements PythonExecutorService {
     private Process startPythonProcess(Path tempDir) throws IOException {
         ProcessBuilder processBuilder = new ProcessBuilder(pythonExecutablePath, "main.py");
         processBuilder.directory(tempDir.toFile());
-        processBuilder.redirectErrorStream(true);
+        // 不重定向错误流，分别处理标准输出和错误输出
+        processBuilder.redirectErrorStream(false);
 
         // 设置环境变量确保Python使用UTF-8编码
         Map<String, String> env = processBuilder.environment();
