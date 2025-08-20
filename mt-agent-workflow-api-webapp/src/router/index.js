@@ -16,6 +16,11 @@ const routes = [
     redirect: '/admin/api',
     children: [
       {
+        path: 'chat',
+        name: 'DataChat',
+        component: () => import('../views/DataChat.vue')
+      },
+      {
         path: 'chat-interface',
         name: 'ChatInterface',
         component: () => import('../views/ChatInterface.vue')

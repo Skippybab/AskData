@@ -305,6 +305,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import api from '@/api'
 
 // 数据
 const apis = ref([])
@@ -347,18 +348,11 @@ onMounted(() => {
 // 方法
 const loadApis = async () => {
   try {
-    const response = await fetch('/api/api-config/list', {
-      headers: {
-        'Authorization': `Bearer ${localStorage.getItem('token')}`
-      }
-    })
-    const result = await response.json()
-    if (result.code === 200) {
-      apis.value = result.data.map(api => ({
-        ...api,
-        showKey: false
-      }))
-    }
+    const result = await api.apiConfig.list()
+    apis.value = (result.data || []).map(api => ({
+      ...api,
+      showKey: false
+    }))
   } catch (error) {
     console.error('加载API列表失败:', error)
     ElMessage.error('加载API列表失败')
@@ -367,15 +361,8 @@ const loadApis = async () => {
 
 const loadDatabases = async () => {
   try {
-    const response = await fetch('/api/db/configs/enabled', {
-      headers: {
-        'Authorization': `Bearer ${localStorage.getItem('token')}`
-      }
-    })
-    const result = await response.json()
-    if (result.code === 200) {
-      databases.value = result.data || []
-    }
+    const result = await api.dbConfig.getEnabled()
+    databases.value = result.data || []
   } catch (error) {
     console.error('加载数据库失败:', error)
     ElMessage.error('加载数据库配置失败')

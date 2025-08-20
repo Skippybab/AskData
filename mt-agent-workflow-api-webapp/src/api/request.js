@@ -12,8 +12,18 @@ const request = axios.create({
 // 请求拦截器
 request.interceptors.request.use(
   config => {
-    // 最小闭环阶段，跳过权限验证
-    // 不添加Authorization头部，让后端使用默认用户
+    // 从localStorage获取token
+    const token = localStorage.getItem('token')
+    if (token) {
+      config.headers['Authorization'] = `Bearer ${token}`
+    }
+    
+    // 如果没有token，某些接口使用默认用户ID
+    if (!token && !config.headers['Authorization']) {
+      // 为了兼容性，某些接口可能需要默认的userId
+      config.headers['X-User-Id'] = '1'
+    }
+    
     return config
   },
   error => {

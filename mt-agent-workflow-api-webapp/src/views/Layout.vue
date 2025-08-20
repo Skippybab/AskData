@@ -43,7 +43,7 @@
               <el-icon><Connection /></el-icon>
               <span>接口管理</span>
             </el-menu-item>
-            <el-menu-item index="/admin/chat-interface">
+            <el-menu-item index="/admin/chat">
               <el-icon><ChatDotRound /></el-icon>
               <span>数据问答</span>
             </el-menu-item>
