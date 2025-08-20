@@ -310,6 +310,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import api from '@/api'
 
 // 数据
 const activeTab = ref('database')
@@ -382,14 +383,13 @@ onMounted(() => {
 // 方法
 const loadDatabases = async () => {
   try {
-    const response = await fetch('/api/db/configs', {
-      headers: {
-        'Authorization': `Bearer ${localStorage.getItem('token')}`
-      }
-    })
-    const result = await response.json()
-    if (result.code === 200) {
-      databases.value = result.data.records || []
+    const result = await api.dbConfig.list({ size: 100 })
+    if (result.data && result.data.records) {
+      databases.value = result.data.records
+    } else if (Array.isArray(result.data)) {
+      databases.value = result.data
+    } else {
+      databases.value = []
     }
   } catch (error) {
     console.error('加载数据库失败:', error)
@@ -410,19 +410,12 @@ const selectDatabase = async (db) => {
 
 const loadTables = async (dbId) => {
   try {
-    const response = await fetch(`/api/db/schema/tables?dbConfigId=${dbId}`, {
-      headers: {
-        'Authorization': `Bearer ${localStorage.getItem('token')}`
-      }
-    })
-    const result = await response.json()
-    if (result.code === 200) {
-      tables.value = result.data.map(table => ({
-        ...table,
-        editing: false,
-        tempComment: table.tableComment
-      }))
-    }
+    const result = await api.schema.getTables(dbId)
+    tables.value = (result.data || []).map(table => ({
+      ...table,
+      editing: false,
+      tempComment: table.tableComment
+    }))
   } catch (error) {
     console.error('加载表列表失败:', error)
     ElMessage.error('加载表列表失败')
@@ -583,23 +576,14 @@ const testConnection = async () => {
   connectionValid.value = false
   
   try {
-    const response = await fetch('/api/db/config/test', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${localStorage.getItem('token')}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(dbForm.value)
+    const result = await api.dbConfig.testConnection({
+      ...dbForm.value,
+      rawPassword: dbForm.value.password
     })
-    const result = await response.json()
-    if (result.code === 200) {
-      connectionValid.value = true
-      ElMessage.success('连接成功')
-    } else {
-      ElMessage.error(result.message || '连接失败')
-    }
+    connectionValid.value = true
+    ElMessage.success('连接成功')
   } catch (error) {
-    ElMessage.error('连接测试失败')
+    ElMessage.error(error.message || '连接测试失败')
   } finally {
     testing.value = false
   }
@@ -612,40 +596,28 @@ const saveDatabase = async () => {
   }
   
   try {
-    const response = await fetch('/api/db/config', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${localStorage.getItem('token')}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        ...dbForm.value,
-        rawPassword: dbForm.value.password,
-        status: 1
-      })
+    const result = await api.dbConfig.save({
+      ...dbForm.value,
+      rawPassword: dbForm.value.password,
+      status: 1
     })
-    const result = await response.json()
-    if (result.code === 200) {
-      ElMessage.success('数据库添加成功')
-      showAddDbDialog.value = false
-      loadDatabases()
-      
-      // 重置表单
-      dbForm.value = {
-        name: '',
-        dbType: 'mysql',
-        host: '',
-        port: 3306,
-        databaseName: '',
-        username: '',
-        password: ''
-      }
-      connectionValid.value = false
-    } else {
-      ElMessage.error(result.message || '添加失败')
+    ElMessage.success('数据库添加成功')
+    showAddDbDialog.value = false
+    loadDatabases()
+    
+    // 重置表单
+    dbForm.value = {
+      name: '',
+      dbType: 'mysql',
+      host: '',
+      port: 3306,
+      databaseName: '',
+      username: '',
+      password: ''
     }
+    connectionValid.value = false
   } catch (error) {
-    ElMessage.error('添加失败')
+    ElMessage.error(error.message || '添加失败')
   }
 }
 
