@@ -1,0 +1,215 @@
+funCode: "2.2"  # 问题编号
+temType: A          # 模板类型 A.通用模板 B.个人模版
+
+nodes:
+  - nodeId: "n1"              # 节点ID
+    nodeType: a             # 节点类型 a.数据查询节点 b.计算节点 c.可视化节点 d.文本理解节点
+    isRoot: true            # 是否为初始节点
+    desc: 查询行业年研发投入数据
+    inputs: # 入参列表
+      - fieldName: classify
+        fieldType: int
+        sourceType: 1
+        defaultValue: dc1
+      - fieldName: year        # 字段名
+        fieldType: String      # 字段类型
+        sourceType: 2          # 来源类型 1.默认值 2.意图来源 3.节点来源
+        defaultValue:        # 默认值
+      - fieldName: industry
+        fieldType: String
+        sourceType: 2
+        defaultValue:
+      - fieldName: city
+        fieldType: String
+        sourceType: 2
+        defaultValue:
+      - fieldName: region
+        fieldType: String
+        sourceType: 2
+        defaultValue:
+      - fieldName: index
+        fieldType: int
+        sourceType: 1
+        defaultValue: 4
+    outputs: #出参列表
+      - fieldName: nowData  #字段名
+        fieldType: double     #字段类型
+    nextNodes: [ "n4", "n5" ]    # 下一节点列表
+
+  - nodeId: "n2"              # 节点ID
+    nodeType: a             # 节点类型 a.数据查询节点 b.计算节点 c.可视化节点 d.文本理解节点
+    isRoot: true            # 是否为初始节点
+    desc: 查询行业上一年研发投入数据
+    inputs: # 入参列表
+      - fieldName: classify
+        fieldType: int
+        sourceType: 1
+        defaultValue: dc2
+      - fieldName: year        # 字段名
+        fieldType: String      # 字段类型
+        sourceType: 2          # 来源类型 1.默认值 2.意图来源 3.节点来源
+        defaultValue:        # 默认值
+      - fieldName: industry
+        fieldType: String
+        sourceType: 2
+        defaultValue:
+      - fieldName: city
+        fieldType: String
+        sourceType: 2
+        defaultValue:
+      - fieldName: region
+        fieldType: String
+        sourceType: 2
+        defaultValue:
+      - fieldName: index
+        fieldType: int
+        sourceType: 1
+        defaultValue: 4
+    outputs: #出参列表
+      - fieldName: lastData  #字段名
+        fieldType: double     #字段类型
+    nextNodes: [ "n5" ]    # 下一节点列表
+
+  - nodeId: "n3"              # 节点ID
+    nodeType: a             # 节点类型 a.数据查询节点 b.计算节点 c.可视化节点 d.文本理解节点
+    isRoot: true            # 是否为初始节点
+    desc: 查询行业近三年研发投入数据
+    inputs: # 入参列表
+      - fieldName: classify
+        fieldType: int
+        sourceType: 1
+        defaultValue: dc3
+      - fieldName: year        # 字段名
+        fieldType: String      # 字段类型
+        sourceType: 2          # 来源类型 1.默认值 2.意图来源 3.节点来源
+        defaultValue:        # 默认值
+      - fieldName: industry
+        fieldType: String
+        sourceType: 2
+        defaultValue:
+      - fieldName: city
+        fieldType: String
+        sourceType: 2
+        defaultValue:
+      - fieldName: region
+        fieldType: String
+        sourceType: 2
+        defaultValue:
+      - fieldName: N
+        fieldType: Integer
+        sourceType: 1
+        defaultValue: 3 #默认3年
+      - fieldName: index
+        fieldType: int
+        sourceType: 1
+        defaultValue: 4
+    outputs: #出参列表
+      - fieldName: trendData  #字段名
+        fieldType: list     #字段类型
+      - fieldName: xTags  #字段名
+        fieldType: list     #字段类型
+    nextNodes: [ "n6" ]    # 下一节点列表
+
+  - nodeId: "n4"              # 节点ID
+    nodeType: c             # 节点类型 a.数据查询节点 b.计算节点 c.可视化节点 d.文本理解节点
+    isRoot: false            # 是否为初始节点
+    desc: 研发投入规模可视化
+    inputs: # 入参列表
+      - fieldName: classify
+        fieldType: int
+        sourceType: 1
+        defaultValue: vc1
+      - fieldName: data
+        fieldType: Double
+        sourceType: 3
+        valueSource: n1.nowData
+      - fieldName: label
+        fieldType: string
+        sourceType: 1
+        defaultValue: "研发投入规模"
+    nextNodes: [ ]    # 下一节点列表
+
+  - nodeId: "n5"              # 节点ID
+    nodeType: b             # 节点类型 a.数据查询节点 b.计算节点 c.可视化节点 d.文本理解节点
+    isRoot: false            # 是否为初始节点
+    desc: 计算行业研发投入增长率
+    inputs: # 入参列表
+      - fieldName: classify
+        fieldType: int
+        sourceType: 1
+        defaultValue: cc1
+      - fieldName: nowData
+        fieldType: Double
+        sourceType: 3
+        defaultValue:
+        valueSource: n1.nowData
+      - fieldName: lastData        # 字段名
+        fieldType: Double      # 字段类型
+        sourceType: 3          # 来源类型 1.默认值 2.共识来源 3.节点来源
+        defaultValue:        # 默认值
+        valueSource: n2.lastData
+    outputs: #出参列表
+      - fieldName: growthData  #字段名
+        fieldType: double     #字段类型
+    nextNodes: [ "n7" ]    # 下一节点列表
+
+  - nodeId: "n6"              # 节点ID
+    nodeType: c             # 节点类型 a.数据查询节点 b.计算节点 c.可视化节点 d.文本理解节点
+    isRoot: false            # 是否为初始节点
+    desc: 研发投入趋势可视化
+    inputs: # 入参列表
+      - fieldName: classify
+        fieldType: int
+        sourceType: 1
+        defaultValue: vc3
+      - fieldName: industry
+        fieldType: String
+        sourceType: 2
+        defaultValue:
+      - fieldName: city
+        fieldType: String
+        sourceType: 2
+        defaultValue:
+      - fieldName: region
+        fieldType: String
+        sourceType: 2
+        defaultValue:
+      - fieldName: index
+        fieldType: string
+        sourceType: 1
+        defaultValue: "研发投入"
+      - fieldName: trendData
+        fieldType: List
+        sourceType: 3
+        defaultValue:
+        valueSource: n3.trendData
+      - fieldName: xTags
+        fieldType: List
+        sourceType: 3
+        defaultValue:
+        valueSource: n3.xTags
+    nextNodes: [ ]    # 下一节点列表
+
+  - nodeId: "n7"              # 节点ID
+    nodeType: c             # 节点类型 a.数据查询节点 b.计算节点 c.可视化节点 d.文本理解节点
+    isRoot: false            # 是否为初始节点
+    desc: 研发投入增长率可视化
+    inputs: # 入参列表
+      - fieldName: classify
+        fieldType: int
+        sourceType: 1
+        defaultValue: vc1
+      - fieldName: data
+        fieldType: Double
+        sourceType: 3
+        defaultValue:
+        valueSource: n5.growthData
+      - fieldName: unit
+        fieldType: string
+        sourceType: 1
+        defaultValue: "%"
+      - fieldName: label
+        fieldType: string
+        sourceType: 1
+        defaultValue: 研发投入增速
+    nextNodes: [ ]    # 下一节点列表

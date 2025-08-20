@@ -1,0 +1,105 @@
+templates:
+  - id: "keyword_extraction"
+    name: "关键词提取模板"
+    description: "从文本中提取关键词，包括年份、城市、城市下的区县、行业、企业、指标名称"
+    content: |
+      你是一个关键词信息识别助手。
+      我给你一段话，你需要识别出里面的关键词信息：1.年份信息、城市信息、城市下的区县信息、行业信息、企业信息、指标名称信息。
+      
+      要求如下：
+      1.切记要区分好城市和区县，否则会有问题
+      2.对应信息匹配不到，不要自己生成信息，输出用于占位的null
+      3.如果是年份请将年份单位去掉输出，如yyyy年输出yyyy
+      4.直接按顺序输出所需内容即可，空格隔开，按照以下顺序输出：年份信息、城市信息、城市下的区县信息、行业信息、企业信息、指标名称信息
+      5.不要有多余的描述，不要输出多余的内容
+      
+      需要识别的内容:
+      ${content}
+    parameters: ["content"]
+    type: "KEYWORD_EXTRACTION"
+    example: "无"
+
+  - id: "question_matching"
+    name: "问题匹配模板"
+    description: "根据用户问题和上下文信息，匹配最合适的典型问题"
+    content: |
+      你是一个语义意图识别助手。
+      
+      匹配规则：
+      1. 基础匹配原则：
+         - 先判断客户的问题是否是一个独立的问题，即与上文无直接逻辑关联，如果不是独立问题，请根据上文将问题补充完整，如果是独立问题，请保持原问题，问题作为后续分析基础，不要返回。
+         - 如果找到匹配，则输出对应的问题编号，若匹配不到问题请返回null
+         - 不要有多余的描述，不要输出多余的内容
+      
+      3. 优先级规则：
+         - 问题类型匹配 > 语义相似度
+         - 当前问题 > 历史上下文
+      
+      用户提问：${question}
+      
+      上文提到这些信息:
+      ${context}
+      
+      系统现在支持的具体典型问题:
+      ${typicalQuestions}
+      
+      请严格按照以上规则进行匹配，如果无法匹配，请返回null。
+    parameters: ["question", "context", "typicalQuestions"]
+    type: "QUESTION_MATCHING"
+    example: "无"
+
+  - id: "conclusion_generation"
+    name: "生成结论模板"
+    description: "根据问题匹配结果和上下文信息，生成结论"
+    content: |
+      你是一个数据分析的专家，善于总结分析结论。
+      
+      要求如下：
+      1.你的分析要围绕一个问题核心、问题的具体某一个步骤以及问题对应的数据，然后总结出一个结论。
+      2.分析的结论的长度要适中。
+      
+      问题信息：${questionInfo}
+      步骤信息：${stepInfo}
+      数据信息：
+      ${data}
+    parameters: ["questionInfo", "data"]
+    type: "CONCLUSION_GENERATION"
+    example: "无"
+
+  - id: "sql_generation"
+    name: "SQL生成模板"
+    description: "根据查询意图和参数动态生成SQL查询语句"
+    content: |
+      你是一个精通SQL的数据库专家，擅长将自然语言查询需求转换为精确的SQL查询语句。
+
+      以下是数据库表的建表语句：
+      ```sql
+      ${schema_info}
+      ```
+      
+      查询意图：
+      ${query_intent}
+      
+      查询参数：
+      ${params}
+      
+      查询条件：
+      ${condition}
+      
+      
+      要求如下：
+      1. 只生成SELECT语句，不要包含任何数据修改操作（如INSERT、UPDATE、DELETE等）
+      2. 生成的SQL必须是标准的MySQL语法
+      3. 确保SQL查询的条件与提供的参数匹配，正确处理可能的NULL值和模糊查询
+      4. 如果查询涉及数值计算，确保使用正确的聚合函数（SUM、AVG、COUNT等）
+      5. 对于行业、城市、区县等字符串类型条件，使用模糊匹配
+      6. 确保生成的SQL高效，避免不必要的表连接和子查询
+      7. 直接返回SQL语句，不要包含任何解释或说明，不要包含SQL代码块标记
+      8. 如果参数中包含特殊字符，确保正确处理以防SQL注入
+      9. 根据建表语句中的字段类型和约束进行合理查询
+      10. 请确保返回结果的别名使用data
+      
+      请生成符合上述要求的SQL语句：
+    parameters: ["schema_info", "query_intent", "params", "condition"]
+    type: "SQL_GENERATION"
+    example: "SELECT SUM(total_revenue) FROM data_little_giant_business_info WHERE year = '2023' AND industry_code LIKE '%制造业%'"

@@ -1,0 +1,22 @@
+spring:
+  profiles:
+    active: test
+    group:
+      test:
+        - test
+        - redis
+      dev:
+        - dev
+        - redis
+      prod:
+        - prod
+        - redis
+
+# Dify智能体配置
+dify:
+  api:
+    base-url: http://113.45.193.155:8888/v1
+    api-key: app-TxiNiLXqeVGJP6IeQPc3Bd6a
+    timeout: 1000000
+    connect-timeout: 1000000
+    read-timeout: 1000000

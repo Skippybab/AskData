@@ -1,0 +1,274 @@
+package com.mt.agent.workflow.api.util;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.*;
+import org.springframework.stereotype.Component;
+import org.springframework.web.client.RestTemplate;
+
+import java.util.HashMap;
+import java.util.Map;
+import java.util.UUID;
+
+/**
+ * Dify工作流调用工具
+ * 支持执行Dify工作流，可通过参数灵活配置
+ */
+@Slf4j
+@Component
+@RequiredArgsConstructor
+public class DifyWorkflowCaller {
+
+    private final RestTemplate restTemplate;
+    private final ObjectMapper objectMapper;
+
+    /**
+     * 执行Dify工作流
+     * 
+     * @param baseUrl Dify服务基础URL (如: http://113.45.193.155:8888/v1)
+     * @param apiKey API密钥 (如: app-xxxx)
+     * @param inputs 工作流输入参数Map
+     * @param user 用户标识
+     * @return 工作流执行结果
+     */
+    public DifyWorkflowResponse executeWorkflow(String baseUrl, String apiKey, Map<String, Object> inputs, String user) {
+        log.info("开始执行Dify工作流，baseUrl: {}, user: {}, inputs参数数量: {}", 
+                baseUrl, user, inputs != null ? inputs.size() : 0);
+        
+        try {
+            // 构建请求URL
+            String url = baseUrl + "/workflows/run";
+            log.debug("工作流执行URL: {}", url);
+
+            // 构建请求头
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            headers.set("Authorization", "Bearer " + apiKey);
+            log.debug("API Key前缀: {}", apiKey != null ? apiKey.substring(0, Math.min(10, apiKey.length())) + "..." : "null");
+
+            // 构建请求体
+            Map<String, Object> requestBody = new HashMap<>();
+            requestBody.put("inputs", inputs != null ? inputs : new HashMap<>());
+            
+            // 生成用户标识
+            if (user != null && !user.trim().isEmpty()) {
+                requestBody.put("user", user);
+            } else {
+                String generatedUser = "user_" + UUID.randomUUID().toString().substring(0, 8);
+                requestBody.put("user", generatedUser);
+                log.debug("生成用户标识: {}", generatedUser);
+            }
+
+            // 设置响应模式为阻塞
+            requestBody.put("response_mode", "blocking");
+
+            log.debug("工作流请求体: {}", requestBody);
+
+            // 创建请求实体
+            HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
+
+            // 发送请求
+            log.info("发送工作流执行请求...");
+            ResponseEntity<String> response = restTemplate.exchange(
+                    url, 
+                    HttpMethod.POST, 
+                    entity, 
+                    String.class
+            );
+
+            // 解析响应
+            if (response.getStatusCode() == HttpStatus.OK) {
+                String responseBody = response.getBody();
+                log.debug("工作流执行成功，响应内容长度: {}", responseBody != null ? responseBody.length() : 0);
+                
+                return parseWorkflowResponse(responseBody);
+            } else {
+                log.error("工作流执行失败，HTTP状态码: {}, 响应: {}", response.getStatusCode(), response.getBody());
+                return DifyWorkflowResponse.error("工作流执行失败，HTTP状态码: " + response.getStatusCode());
+            }
+
+        } catch (Exception e) {
+            log.error("执行Dify工作流异常: {}", e.getMessage(), e);
+            return DifyWorkflowResponse.error("工作流执行异常: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 解析工作流响应
+     */
+    private DifyWorkflowResponse parseWorkflowResponse(String responseBody) {
+        try {
+            JsonNode jsonNode = objectMapper.readTree(responseBody);
+            
+            DifyWorkflowResponse response = new DifyWorkflowResponse();
+            response.setSuccess(true);
+            
+            // 解析基本信息
+            if (jsonNode.has("workflow_run_id")) {
+                response.setWorkflowRunId(jsonNode.get("workflow_run_id").asText());
+            }
+            
+            if (jsonNode.has("task_id")) {
+                response.setTaskId(jsonNode.get("task_id").asText());
+            }
+            
+            if (jsonNode.has("status")) {
+                response.setStatus(jsonNode.get("status").asText());
+            }
+
+            // 解析输出数据
+            if (jsonNode.has("data")) {
+                JsonNode dataNode = jsonNode.get("data");
+                if (dataNode.has("outputs")) {
+                    JsonNode outputsNode = dataNode.get("outputs");
+                    Map<String, Object> outputs = new HashMap<>();
+                    
+                    outputsNode.fields().forEachRemaining(entry -> {
+                        try {
+                            outputs.put(entry.getKey(), entry.getValue().asText());
+                        } catch (Exception e) {
+                            log.debug("解析输出字段失败: {}", entry.getKey());
+                        }
+                    });
+                    
+                    response.setOutputs(outputs);
+                    log.info("工作流执行成功，输出字段数量: {}", outputs.size());
+                }
+            }
+
+            // 解析元数据
+            if (jsonNode.has("metadata")) {
+                JsonNode metadataNode = jsonNode.get("metadata");
+                Map<String, Object> metadata = new HashMap<>();
+                
+                metadataNode.fields().forEachRemaining(entry -> {
+                    try {
+                        metadata.put(entry.getKey(), entry.getValue().asText());
+                    } catch (Exception e) {
+                        log.debug("解析元数据字段失败: {}", entry.getKey());
+                    }
+                });
+                
+                response.setMetadata(metadata);
+            }
+
+            return response;
+
+        } catch (Exception e) {
+            log.error("解析工作流响应失败: {}", e.getMessage(), e);
+            return DifyWorkflowResponse.error("响应解析失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Dify工作流响应封装类
+     */
+    public static class DifyWorkflowResponse {
+        private boolean success;
+        private String errorMessage;
+        private String workflowRunId;
+        private String taskId;
+        private String status;
+        private Map<String, Object> outputs;
+        private Map<String, Object> metadata;
+
+        public DifyWorkflowResponse() {
+            this.outputs = new HashMap<>();
+            this.metadata = new HashMap<>();
+        }
+
+        public static DifyWorkflowResponse error(String message) {
+            DifyWorkflowResponse response = new DifyWorkflowResponse();
+            response.setSuccess(false);
+            response.setErrorMessage(message);
+            return response;
+        }
+
+        // Getters and Setters
+        public boolean isSuccess() {
+            return success;
+        }
+
+        public void setSuccess(boolean success) {
+            this.success = success;
+        }
+
+        public String getErrorMessage() {
+            return errorMessage;
+        }
+
+        public void setErrorMessage(String errorMessage) {
+            this.errorMessage = errorMessage;
+        }
+
+        public String getWorkflowRunId() {
+            return workflowRunId;
+        }
+
+        public void setWorkflowRunId(String workflowRunId) {
+            this.workflowRunId = workflowRunId;
+        }
+
+        public String getTaskId() {
+            return taskId;
+        }
+
+        public void setTaskId(String taskId) {
+            this.taskId = taskId;
+        }
+
+        public String getStatus() {
+            return status;
+        }
+
+        public void setStatus(String status) {
+            this.status = status;
+        }
+
+        public Map<String, Object> getOutputs() {
+            return outputs;
+        }
+
+        public void setOutputs(Map<String, Object> outputs) {
+            this.outputs = outputs;
+        }
+
+        public Map<String, Object> getMetadata() {
+            return metadata;
+        }
+
+        public void setMetadata(Map<String, Object> metadata) {
+            this.metadata = metadata;
+        }
+
+        /**
+         * 获取指定输出字段的值
+         */
+        public String getOutput(String key) {
+            Object value = outputs.get(key);
+            return value != null ? value.toString() : null;
+        }
+
+        /**
+         * 获取text输出字段（议题抽取结果）
+         */
+        public String getText() {
+            return getOutput("text");
+        }
+
+        @Override
+        public String toString() {
+            return "DifyWorkflowResponse{" +
+                    "success=" + success +
+                    ", errorMessage='" + errorMessage + '\'' +
+                    ", workflowRunId='" + workflowRunId + '\'' +
+                    ", taskId='" + taskId + '\'' +
+                    ", status='" + status + '\'' +
+                    ", outputs=" + outputs +
+                    ", metadata=" + metadata +
+                    '}';
+        }
+    }
+}

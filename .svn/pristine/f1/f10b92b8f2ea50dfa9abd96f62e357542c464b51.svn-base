@@ -1,0 +1,91 @@
+package com.mt.agent.workflow.api.config;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import com.fasterxml.jackson.datatype.jsr310.deser.LocalDateDeserializer;
+import com.fasterxml.jackson.datatype.jsr310.deser.LocalDateTimeDeserializer;
+import com.fasterxml.jackson.datatype.jsr310.ser.LocalDateSerializer;
+import com.fasterxml.jackson.datatype.jsr310.ser.LocalDateTimeSerializer;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.web.client.RestTemplate;
+
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+
+/**
+ * Dify工作流配置类
+ * 集中管理不同场景的Dify配置信息
+ */
+@Configuration
+public class DifyConfig {
+
+    /**
+     * RestTemplate Bean配置
+     * 用于HTTP请求调用
+     */
+    @Bean
+    public RestTemplate restTemplate() {
+        return new RestTemplate();
+    }
+
+    /**
+     * ObjectMapper Bean配置
+     * 用于JSON序列化和反序列化，支持Java 8时间类型
+     */
+    @Bean
+    public ObjectMapper objectMapper() {
+        ObjectMapper mapper = new ObjectMapper();
+        
+        // 注册JSR310模块
+        JavaTimeModule javaTimeModule = new JavaTimeModule();
+        
+        // 配置日期格式
+        DateTimeFormatter dateFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd");
+        DateTimeFormatter dateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+        
+        // 添加自定义序列化器和反序列化器
+        javaTimeModule.addSerializer(LocalDate.class, new LocalDateSerializer(dateFormatter));
+        javaTimeModule.addSerializer(LocalDateTime.class, new LocalDateTimeSerializer(dateTimeFormatter));
+        javaTimeModule.addDeserializer(LocalDate.class, new LocalDateDeserializer(dateFormatter));
+        javaTimeModule.addDeserializer(LocalDateTime.class, new LocalDateTimeDeserializer(dateTimeFormatter));
+        
+        mapper.registerModule(javaTimeModule);
+        
+        // 禁用将日期写为时间戳
+        mapper.configure(com.fasterxml.jackson.databind.SerializationFeature.WRITE_DATES_AS_TIMESTAMPS, false);
+        
+        return mapper;
+    }
+
+    /**
+     * 拜访记录智能问答配置
+     */
+    public static class VisitChat {
+        public static final String BASE_URL = "http://113.45.193.155:8888/v1";
+        public static final String API_KEY = "app-myHT9zYGN1GEumvC333Bb1zr";
+        public static final String USER_PREFIX = "visit_user_";
+        public static final String SCENARIO = "visit_records";
+    }
+
+
+    /**
+     * 议题抽取工作流配置
+     */
+    public static class TopicExtraction {
+        public static final String BASE_URL = "http://113.45.193.155:8888/v1";
+        public static final String API_KEY = "app-E96pDaNHzay95rKx49Vppnwy";
+        public static final String INPUT_FIELD = "content";
+        public static final String OUTPUT_FIELD = "text";
+    }
+
+    /**
+     * 通用配置
+     */
+    public static class Common {
+        public static final int TIMEOUT_MINUTES = 5;
+        public static final int MAX_CONTEXT_RECORDS = 50;
+        public static final int MAX_SUMMARY_RECORDS = 20;
+    }
+}
