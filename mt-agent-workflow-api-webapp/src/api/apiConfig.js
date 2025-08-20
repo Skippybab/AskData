@@ -1,4 +1,4 @@
-import request from '@/utils/request'
+import request from './request.js'
 
 export const apiConfigApi = {
   // 分页查询API配置

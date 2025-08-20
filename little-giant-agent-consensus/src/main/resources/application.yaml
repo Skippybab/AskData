@@ -1,0 +1,3 @@
+spring:
+  application:
+    name: little-giant-agent-consensus

@@ -1,0 +1,6 @@
+elasticsearch:
+  host: 123.207.83.106
+  port: 9200
+  username: elastic
+  password: 123456
+  index: dialogues

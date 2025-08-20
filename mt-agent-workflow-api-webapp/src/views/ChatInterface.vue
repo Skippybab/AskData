@@ -729,10 +729,11 @@ const sendMessage = async () => {
   isStreaming.value = true
 
   try {
-    console.log('发送消息到后端:', {
+    console.log('🔍 [前端调试] 发送消息到后端:', {
       sessionId: currentSession.value.id,
       content: userMessageContent,
-      dbConfigId: selectedDbConfig.value
+      dbConfigId: selectedDbConfig.value,
+      tableId: selectedTable.value
     })
 
     // 创建AbortController用于超时控制
@@ -768,13 +769,13 @@ const sendMessage = async () => {
 
     // 后端现在是阻塞式调用，直接获取响应数据
     let responseText = await response.text()
-    console.log('收到后端响应:', responseText)
-    console.log('响应长度:', responseText.length)
-    console.log('响应是否为空:', !responseText || responseText.trim() === '')
+    console.log('🔍 [前端调试] 收到后端响应, 长度:', responseText.length)
+    console.log('🔍 [前端调试] 响应是否为空:', !responseText || responseText.trim() === '')
+    console.log('🔍 [前端调试] 响应内容前500字符:', responseText.substring(0, Math.min(500, responseText.length)))
     
     // 如果响应为空，使用测试数据
     if (!responseText || responseText.trim() === '') {
-      console.warn('后端响应为空，使用测试数据')
+      console.warn('🔍 [前端调试] 后端响应为空，使用测试数据')
       responseText = `event: llm_token
 data: {"content":"这是一个测试响应。我正在分析您的问题。","type":"thinking"}
 
@@ -792,47 +793,64 @@ data: {"status":"success"}
     let thinkingContent = ''
     let sqlResult = ''
     
-    console.log('开始解析SSE响应，总行数:', lines.length)
-    console.log('所有行:', lines)
+    console.log('🔍 [前端调试] 开始解析SSE响应，总行数:', lines.length)
+    console.log('🔍 [前端调试] 所有行:', lines)
     
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i]
-      console.log(`解析第${i}行:`, line)
+      console.log(`🔍 [前端调试] 解析第${i}行:`, line)
       
       if (line.startsWith('event:') && line.includes('llm_token')) {
-        console.log(`找到llm_token事件在第${i}行`)
+        console.log(`🔍 [前端调试] 找到llm_token事件在第${i}行`)
         // 找到llm_token事件，获取下一行的数据
         const dataIndex = i + 1
         if (dataIndex < lines.length && lines[dataIndex].startsWith('data:')) {
-          console.log(`找到data行在第${dataIndex}行:`, lines[dataIndex])
+          console.log(`🔍 [前端调试] 找到data行在第${dataIndex}行:`, lines[dataIndex])
           try {
             const jsonStr = lines[dataIndex].substring(5).trim()
-            console.log('准备解析的JSON字符串:', jsonStr)
+            console.log('🔍 [前端调试] 准备解析的JSON字符串:', jsonStr)
             const data = JSON.parse(jsonStr)
-            console.log('处理llm_token事件:', data)
-            console.log('数据类型:', data.type, '内容长度:', data.content ? data.content.length : 0)
+            console.log('🔍 [前端调试] 处理llm_token事件:', data)
+            console.log('🔍 [前端调试] 数据类型:', data.type, '内容长度:', data.content ? data.content.length : 0)
             
             if (data.type === 'thinking' && data.content) {
               thinkingContent += data.content
-              console.log('累积思考内容, 当前长度:', thinkingContent.length)
+              console.log('🔍 [前端调试] 累积思考内容, 当前长度:', thinkingContent.length)
             } else if (data.type === 'sql_result' && data.content) {
               sqlResult = data.content
-              console.log('设置SQL结果, 长度:', sqlResult.length)
-              console.log('SQL结果内容:', sqlResult.substring(0, Math.min(200, sqlResult.length)) + '...')
+              console.log('🔍 [前端调试] 设置SQL结果, 长度:', sqlResult.length)
+              console.log('🔍 [前端调试] SQL结果内容前200字符:', sqlResult.substring(0, Math.min(200, sqlResult.length)) + '...')
+              
+              // 检查数据格式
+              console.log('🔍 [前端调试] SQL结果是否以{开头:', sqlResult.startsWith('{'))
+              console.log('🔍 [前端调试] SQL结果是否包含dataType字段:', sqlResult.includes('"dataType"'))
+              console.log('🔍 [前端调试] SQL结果是否包含python_dict_list:', sqlResult.includes('"python_dict_list"'))
+              
+              // 尝试解析JSON格式
+              try {
+                const parsedResult = JSON.parse(sqlResult)
+                console.log('🔍 [前端调试] SQL结果JSON解析成功:', parsedResult)
+                console.log('🔍 [前端调试] JSON数据类型:', typeof parsedResult)
+                if (typeof parsedResult === 'object') {
+                  console.log('🔍 [前端调试] JSON对象键:', Object.keys(parsedResult))
+                }
+              } catch (parseError) {
+                console.log('🔍 [前端调试] SQL结果不是有效的JSON格式:', parseError.message)
+              }
             } else {
-              console.warn('未知的数据类型或内容为空:', data)
+              console.warn('🔍 [前端调试] 未知的数据类型或内容为空:', data)
             }
           } catch (e) {
-            console.error('解析llm_token数据失败:', e, '原始数据:', lines[dataIndex])
-            console.error('JSON解析错误详情:', e.message)
+            console.error('🔍 [前端调试] 解析llm_token数据失败:', e, '原始数据:', lines[dataIndex])
+            console.error('🔍 [前端调试] JSON解析错误详情:', e.message)
           }
         } else {
-          console.warn(`第${dataIndex}行不是data行或不存在:`, dataIndex < lines.length ? lines[dataIndex] : '不存在')
+          console.warn(`🔍 [前端调试] 第${dataIndex}行不是data行或不存在:`, dataIndex < lines.length ? lines[dataIndex] : '不存在')
         }
       }
     }
     
-    console.log('解析完成 - 思考内容长度:', thinkingContent.length, 'SQL结果长度:', sqlResult.length)
+    console.log('🔍 [前端调试] 解析完成 - 思考内容长度:', thinkingContent.length, 'SQL结果长度:', sqlResult.length)
     
     // 创建合并的AI回复消息
     const aiMessage = {
@@ -848,51 +866,114 @@ data: {"status":"success"}
     if (thinkingContent) {
       aiMessage.thinkingContent = thinkingContent
       aiMessage.hasThinking = true
-      console.log('添加思考内容到消息, 长度:', thinkingContent.length)
+      console.log('🔍 [前端调试] 添加思考内容到消息, 长度:', thinkingContent.length)
     }
     
     // 如果有SQL结果，设置为主要内容
     if (sqlResult) {
       // 检测是否为JSON格式的数据响应
-      if (sqlResult.startsWith('{') && sqlResult.includes('"dataType":"python_dict_list"')) {
+      console.log('🔍 [前端调试] 开始检测SQL结果格式...')
+      console.log('🔍 [前端调试] SQL结果是否以{开头:', sqlResult.startsWith('{'))
+      console.log('🔍 [前端调试] SQL结果是否包含dataType字段:', sqlResult.includes('"dataType"'))
+      console.log('🔍 [前端调试] SQL结果是否包含python_dict_list:', sqlResult.includes('"python_dict_list"'))
+      console.log('🔍 [前端调试] SQL结果是否包含完整匹配:', sqlResult.includes('"dataType":"python_dict_list"'))
+      console.log('🔍 [前端调试] SQL结果前100字符:', sqlResult.substring(0, 100))
+      
+      // 尝试解析JSON格式的查询结果
+      let isDataTableFormat = false
+      try {
+        const parsedResult = JSON.parse(sqlResult)
+        console.log('🔍 [前端调试] JSON解析成功:', parsedResult)
+        console.log('🔍 [前端调试] parsedResult.dataType:', parsedResult.dataType)
+        console.log('🔍 [前端调试] parsedResult.parsedData:', parsedResult.parsedData ? '存在' : '不存在')
+        if (parsedResult.dataType === 'python_dict_list' && parsedResult.parsedData) {
+          isDataTableFormat = true
+          console.log('🔍 [前端调试] 检测到数据表格格式')
+        } else {
+          console.log('🔍 [前端调试] 数据格式不符合要求')
+        }
+      } catch (parseError) {
+        console.log('🔍 [前端调试] JSON解析失败，尝试字符串匹配:', parseError.message)
+        // 如果JSON解析失败，尝试字符串匹配
+        if (sqlResult.startsWith('{') && sqlResult.includes('"dataType":"python_dict_list"')) {
+          isDataTableFormat = true
+          console.log('🔍 [前端调试] 通过字符串匹配检测到数据表格格式')
+        } else {
+          console.log('🔍 [前端调试] 字符串匹配也失败')
+        }
+      }
+      
+      // 如果还是失败，尝试处理转义字符的情况
+      if (!isDataTableFormat) {
+        console.log('🔍 [前端调试] 尝试处理转义字符情况')
+        // 检查是否包含转义的引号
+        if (sqlResult.includes('\\"dataType\\"') && sqlResult.includes('\\"python_dict_list\\"')) {
+          isDataTableFormat = true
+          console.log('🔍 [前端调试] 通过转义字符匹配检测到数据表格格式')
+        }
+        
+        // 尝试解析content字段中的JSON字符串
+        if (!isDataTableFormat && sqlResult.includes('"content":')) {
+          try {
+            const outerJson = JSON.parse(sqlResult)
+            if (outerJson.content && typeof outerJson.content === 'string') {
+              console.log('🔍 [前端调试] 尝试解析content字段')
+              const innerJson = JSON.parse(outerJson.content)
+              if (innerJson.dataType === 'python_dict_list' && innerJson.parsedData) {
+                isDataTableFormat = true
+                console.log('🔍 [前端调试] 通过content字段解析检测到数据表格格式')
+              }
+            }
+          } catch (innerParseError) {
+            console.log('🔍 [前端调试] content字段解析失败:', innerParseError.message)
+          }
+        }
+      }
+      
+      if (isDataTableFormat) {
         aiMessage.content = sqlResult
         aiMessage.hasSqlResult = true
         aiMessage.isDataTable = true // 标记为数据表格类型
-        console.log('设置数据表格结果为主要内容, 长度:', sqlResult.length)
+        console.log('🔍 [前端调试] 设置数据表格结果为主要内容, 长度:', sqlResult.length)
+        console.log('🔍 [前端调试] 消息类型: 数据表格')
       } else {
         aiMessage.content = sqlResult
         aiMessage.hasSqlResult = true
         aiMessage.isDataTable = false
-        console.log('设置SQL结果为主要内容, 长度:', sqlResult.length)
+        console.log('🔍 [前端调试] 设置SQL结果为主要内容, 长度:', sqlResult.length)
+        console.log('🔍 [前端调试] 消息类型: 普通文本')
       }
     } else if (thinkingContent) {
       // 如果没有SQL结果但有思考内容，使用思考内容作为主要内容
       aiMessage.content = thinkingContent
       aiMessage.hasSqlResult = false
       aiMessage.isDataTable = false
-      console.log('使用思考内容作为主要内容, 长度:', thinkingContent.length)
+      console.log('🔍 [前端调试] 使用思考内容作为主要内容, 长度:', thinkingContent.length)
+      console.log('🔍 [前端调试] 消息类型: 思考内容')
     } else {
       // 如果都没有，显示默认消息
       aiMessage.content = '抱歉，未能获取到查询结果。'
       aiMessage.hasSqlResult = false
       aiMessage.isDataTable = false
-      console.log('使用默认消息')
+      console.log('🔍 [前端调试] 使用默认消息')
+      console.log('🔍 [前端调试] 消息类型: 默认消息')
     }
     
     // 添加AI回复消息
     messages.value.push(aiMessage)
-    console.log('创建合并的AI回复消息:', {
+    console.log('🔍 [前端调试] 创建合并的AI回复消息:', {
       id: aiMessage.id,
       type: aiMessage.type,
       hasThinking: aiMessage.hasThinking,
       hasSqlResult: aiMessage.hasSqlResult,
+      isDataTable: aiMessage.isDataTable,
       contentLength: aiMessage.content ? aiMessage.content.length : 0,
       thinkingContentLength: aiMessage.thinkingContent ? aiMessage.thinkingContent.length : 0
     })
     
     // 如果没有收到任何内容，显示错误信息
     if (!thinkingContent && !sqlResult) {
-      console.error('没有收到任何有效内容，原始响应:', responseText)
+      console.error('🔍 [前端调试] 没有收到任何有效内容，原始响应:', responseText)
       ElMessage.error('服务器返回了空响应，请重试')
     }
     
@@ -909,7 +990,6 @@ data: {"status":"success"}
     }
   } finally {
     isStreaming.value = false
-    await loadMessages()
     
     // 如果是新会话的第一条消息，刷新历史对话列表以更新标题
     if (messages.value.length === 2) { // 用户消息 + AI回复

@@ -491,7 +491,23 @@ public class PythonExecutorServiceImpl implements PythonExecutorService {
              + "        if 'total_profit' in locals():\n"
              + "            print(f\"计算结果: {total_profit}\")\n"
              + "        elif 'result' in locals():\n"
-             + "            print(f\"查询结果: {result}\")\n"
+             + "            # 将查询结果转换为JSON格式返回给前端\n"
+             + "            if isinstance(result, list) and len(result) > 0:\n"
+             + "                # 构造前端期望的JSON格式\n"
+             + "                response_data = {\n"
+             + "                    \"dataType\": \"python_dict_list\",\n"
+             + "                    \"parsedData\": json.dumps(result, ensure_ascii=False)\n"
+             + "                }\n"
+             + "                print(json.dumps(response_data, ensure_ascii=False))\n"
+             + "            elif result is not None:\n"
+             + "                # 对于单个值的结果，也构造JSON格式\n"
+             + "                response_data = {\n"
+             + "                    \"dataType\": \"python_dict_list\",\n"
+             + "                    \"parsedData\": json.dumps([{\"value\": result}], ensure_ascii=False)\n"
+             + "                }\n"
+             + "                print(json.dumps(response_data, ensure_ascii=False))\n"
+             + "            else:\n"
+             + "                print(f\"查询结果: {result}\")\n"
              + "        elif 'average_profit' in locals():\n"
              + "            print(f\"平均利润: {average_profit}\")\n"
              + "        bridge.report_step(\"Python代码执行完成\\n\")\n"
@@ -807,8 +823,12 @@ public class PythonExecutorServiceImpl implements PythonExecutorService {
 
             if (exitCode == 0) {
                 log.info("🐍 [Python执行器] Python脚本执行成功, messageId: {}", chatMessage.getId());
-                updateExecutionResult(chatMessage, output, true);
-                return PythonExecutionResult.success(output);
+                
+                // 尝试从输出中提取JSON格式的查询结果
+                String finalResult = extractJsonResultFromOutput(output);
+                
+                updateExecutionResult(chatMessage, finalResult, true);
+                return PythonExecutionResult.success(finalResult);
             } else {
                 log.error("🐍 [Python执行器] Python脚本执行失败, messageId: {}, exit code: {}, 错误: {}", 
                         chatMessage.getId(), exitCode, error);
@@ -824,20 +844,64 @@ public class PythonExecutorServiceImpl implements PythonExecutorService {
     }
 
     /**
+     * 从Python输出中提取JSON格式的查询结果
+     */
+    private String extractJsonResultFromOutput(String output) {
+        try {
+            // 按行分割输出
+            String[] lines = output.split("\\n");
+            
+            // 从后往前查找JSON格式的查询结果
+            for (int i = lines.length - 1; i >= 0; i--) {
+                String line = lines[i].trim();
+                if (line.startsWith("{") && line.endsWith("}")) {
+                    try {
+                        // 尝试解析JSON
+                        Map<String, Object> jsonData = objectMapper.readValue(line, Map.class);
+                        if (jsonData.containsKey("dataType") && "python_dict_list".equals(jsonData.get("dataType"))) {
+                            log.info("🔍 [Python执行器] 成功提取JSON格式的查询结果");
+                            return line;
+                        }
+                    } catch (Exception jsonException) {
+                        // 不是有效的JSON，继续查找
+                        continue;
+                    }
+                }
+            }
+            
+            // 如果没有找到JSON格式的查询结果，返回原始输出
+            log.info("🔍 [Python执行器] 未找到JSON格式的查询结果，返回原始输出");
+            return output;
+        } catch (Exception e) {
+            log.error("🔍 [Python执行器] 提取JSON结果失败: {}", e.getMessage(), e);
+            return output;
+        }
+    }
+
+    /**
      * 更新执行结果到数据库
      */
     private void updateExecutionResult(ChatMessage chatMessage, String result, boolean success) {
         try {
+            log.info("🔍 [Python执行器] 开始更新执行结果到数据库, messageId: {}, success: {}, result长度: {}", 
+                chatMessage.getId(), success, result != null ? result.length() : 0);
+            
             chatMessage.setExecutionResult(result);
             chatMessage.setExecutionStatus(success ? 1 : 2); // 1=成功, 2=失败
             chatMessage.setStatus(success ? 1 : 2); // 更新主状态字段
             if (!success) {
                 chatMessage.setErrorMessage(result);
             }
+            
             chatMessageMapper.updateById(chatMessage);
-            log.info("Updated execution result for messageId: {}, success: {}", chatMessage.getId(), success);
+            log.info("🔍 [Python执行器] 执行结果已更新到数据库, messageId: {}, success: {}", chatMessage.getId(), success);
+            
+            if (success && result != null) {
+                log.debug("🔍 [Python执行器] 执行结果前200字符: {}", 
+                    result.substring(0, Math.min(200, result.length())));
+            }
         } catch (Exception e) {
-            log.error("Failed to update execution result in database for messageId: {}", chatMessage.getId(), e);
+            log.error("🔍 [Python执行器] 更新执行结果到数据库失败, messageId: {}", chatMessage.getId(), e);
         }
     }
 
@@ -865,6 +929,21 @@ public class PythonExecutorServiceImpl implements PythonExecutorService {
                 log.info("Python步骤: {}", stepMsg);
                 reportStep(stepMsg);
             } else {
+                // 检查是否是JSON格式的查询结果
+                if (line.trim().startsWith("{") && line.trim().endsWith("}")) {
+                    try {
+                        // 尝试解析JSON
+                        Map<String, Object> jsonData = objectMapper.readValue(line, Map.class);
+                        if (jsonData.containsKey("dataType") && "python_dict_list".equals(jsonData.get("dataType"))) {
+                            log.info("🔍 [Python执行器] 检测到JSON格式的查询结果");
+                            // 这是查询结果，不需要作为普通输出处理
+                            return;
+                        }
+                    } catch (Exception jsonException) {
+                        // 不是有效的JSON，继续作为普通输出处理
+                    }
+                }
+                
                 // 普通输出
                 log.info("Python输出: {}", line);
                 reportProgress(line);
@@ -1062,18 +1141,30 @@ public class PythonExecutorServiceImpl implements PythonExecutorService {
     private Object handleExecSql(List<Object> args) {
         String sql = (String) args.get(0);
         
-        log.info("🐍 [Python执行器] 执行SQL: {}", sql);
+        log.info("🔍 [Python执行器] 开始执行SQL: {}", sql);
         
         try {
             // 调用FunctionUtil执行SQL
             Object result = functionUtil.executeSQL(sql);
-            log.info("🐍 [Python执行器] SQL执行成功，结果类型: {}, 结果大小: {}", 
+            log.info("🔍 [Python执行器] SQL执行成功，结果类型: {}, 结果大小: {}", 
                     result != null ? result.getClass().getSimpleName() : "null",
                     result instanceof List ? ((List<?>) result).size() : "N/A");
-            log.debug("🐍 [Python执行器] SQL执行结果: {}", result);
+            
+            // 详细记录结果信息
+            if (result instanceof List) {
+                List<?> resultList = (List<?>) result;
+                log.info("🔍 [Python执行器] SQL查询返回 {} 行数据", resultList.size());
+                if (!resultList.isEmpty() && resultList.get(0) instanceof Map) {
+                    Map<?, ?> firstRow = (Map<?, ?>) resultList.get(0);
+                    log.info("🔍 [Python执行器] 第一行数据包含 {} 列: {}", 
+                        firstRow.size(), firstRow.keySet());
+                }
+            }
+            
+            log.debug("🔍 [Python执行器] SQL执行结果详情: {}", result);
             return result;
         } catch (Exception e) {
-            log.error("🐍 [Python执行器] SQL执行失败: {}", e.getMessage(), e);
+            log.error("🔍 [Python执行器] SQL执行失败: {}", e.getMessage(), e);
             throw new RuntimeException("SQL执行失败: " + e.getMessage());
         }
     }

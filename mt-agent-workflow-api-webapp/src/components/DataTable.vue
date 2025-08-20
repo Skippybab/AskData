@@ -175,19 +175,40 @@ export default {
     const parseData = () => {
       const startTime = Date.now()
       
+      console.log('🔍 [DataTable调试] 开始解析数据...')
+      console.log('🔍 [DataTable调试] 接收到的数据长度:', props.data ? props.data.length : 0)
+      console.log('🔍 [DataTable调试] 接收到的数据前200字符:', props.data ? props.data.substring(0, Math.min(200, props.data.length)) : 'null')
+      
       try {
         // 检测是否为JSON格式的数据响应
-        if (props.data.startsWith('{') && props.data.includes('"dataType":"python_dict_list"')) {
+        console.log('🔍 [DataTable调试] 检查数据格式...')
+        console.log('🔍 [DataTable调试] 数据是否以{开头:', props.data ? props.data.startsWith('{') : false)
+        console.log('🔍 [DataTable调试] 数据是否包含dataType字段:', props.data ? props.data.includes('"dataType"') : false)
+        console.log('🔍 [DataTable调试] 数据是否包含python_dict_list:', props.data ? props.data.includes('"python_dict_list"') : false)
+        
+        if (props.data && props.data.startsWith('{') && props.data.includes('"dataType":"python_dict_list"')) {
+          console.log('🔍 [DataTable调试] 数据格式符合要求，开始解析JSON...')
           const response = JSON.parse(props.data)
+          console.log('🔍 [DataTable调试] JSON解析成功:', response)
+          console.log('🔍 [DataTable调试] response.parsedData长度:', response.parsedData ? response.parsedData.length : 0)
+          
           const dictListStr = response.parsedData
           
           // 解析Python字典列表
+          console.log('🔍 [DataTable调试] 开始解析Python字典列表...')
           const parsedData = parsePythonDictList(dictListStr)
+          console.log('🔍 [DataTable调试] Python字典列表解析结果:', parsedData)
           
           if (parsedData && parsedData.length > 0) {
+            console.log('🔍 [DataTable调试] 解析成功，数据行数:', parsedData.length)
+            console.log('🔍 [DataTable调试] 第一行数据:', parsedData[0])
+            
             tableData.value = parsedData
             allFields.value = Object.keys(parsedData[0])
             selectedFields.value = allFields.value.slice(0, 10) // 默认显示前10个字段
+            
+            console.log('🔍 [DataTable调试] 字段列表:', allFields.value)
+            console.log('🔍 [DataTable调试] 选中的字段:', selectedFields.value)
             
             // 更新数据信息
             dataInfo.value = {
@@ -197,12 +218,21 @@ export default {
               parseTime: Date.now() - startTime
             }
             
+            console.log('🔍 [DataTable调试] 数据信息:', dataInfo.value)
+            
             updateTableColumns()
             isTableVisible.value = true
+            console.log('🔍 [DataTable调试] 表格已设置为可见')
+          } else {
+            console.warn('🔍 [DataTable调试] 解析后的数据为空或无效')
           }
+        } else {
+          console.warn('🔍 [DataTable调试] 数据格式不符合要求，不是JSON格式或缺少必要字段')
+          console.log('🔍 [DataTable调试] 实际数据内容:', props.data)
         }
       } catch (error) {
-        console.error('解析数据失败:', error)
+        console.error('🔍 [DataTable调试] 解析数据失败:', error)
+        console.error('🔍 [DataTable调试] 错误详情:', error.message)
         ElMessage.error('数据解析失败，请检查数据格式')
       }
     }
@@ -210,6 +240,10 @@ export default {
     // 解析Python字典列表字符串
     const parsePythonDictList = (dictListStr) => {
       try {
+        console.log('🔍 [DataTable调试] 开始解析Python字典列表字符串...')
+        console.log('🔍 [DataTable调试] 原始字符串长度:', dictListStr ? dictListStr.length : 0)
+        console.log('🔍 [DataTable调试] 原始字符串前200字符:', dictListStr ? dictListStr.substring(0, Math.min(200, dictListStr.length)) : 'null')
+        
         // 简单的Python字典列表解析
         // 将Python格式转换为JSON格式
         let jsonStr = dictListStr
@@ -218,9 +252,17 @@ export default {
           .replace(/True/g, 'true')  // True转true
           .replace(/False/g, 'false')  // False转false
         
-        return JSON.parse(jsonStr)
+        console.log('🔍 [DataTable调试] 转换后的JSON字符串前200字符:', jsonStr.substring(0, Math.min(200, jsonStr.length)))
+        
+        const result = JSON.parse(jsonStr)
+        console.log('🔍 [DataTable调试] Python字典列表解析成功，返回数据类型:', typeof result)
+        if (Array.isArray(result)) {
+          console.log('🔍 [DataTable调试] 返回数组长度:', result.length)
+        }
+        return result
       } catch (error) {
-        console.error('Python字典列表解析失败:', error)
+        console.error('🔍 [DataTable调试] Python字典列表解析失败:', error)
+        console.error('🔍 [DataTable调试] 解析错误详情:', error.message)
         return null
       }
     }

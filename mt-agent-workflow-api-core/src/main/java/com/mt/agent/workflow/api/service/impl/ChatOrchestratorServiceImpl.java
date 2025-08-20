@@ -139,20 +139,72 @@ public class ChatOrchestratorServiceImpl implements ChatOrchestratorService {
     }
 
     private void updateMessageAndSendResult(ChatMessage message, PythonExecutionResult result, SseEmitter emitter) {
+        log.info("🔍 [数据问答] 开始更新消息并发送结果, messageId: {}, success: {}", message.getId(), result.isSuccess());
+        
         message.setExecutionStatus(result.isSuccess() ? 1 : 2);
         if (result.isSuccess()) {
-            message.setExecutionResult(result.getData());
-            try {
-                sendSseMessage(emitter, EventType.LLM_TOKEN, Map.of("content", result.getData(), "type", "sql_result"));
-            } catch (Exception e) {
-                log.error("发送SSE结果失败", e);
+            String resultData = result.getData();
+            log.info("🔍 [数据问答] SQL查询结果数据长度: {} 字节", resultData != null ? resultData.length() : 0);
+            log.debug("🔍 [数据问答] SQL查询结果前200字符: {}", 
+                resultData != null ? resultData.substring(0, Math.min(200, resultData.length())) : "null");
+            
+            // 检查数据长度，如果超过1MB则进行截断处理
+            final int MAX_RESULT_SIZE = 1024 * 1024; // 1MB
+            if (resultData != null && resultData.length() > MAX_RESULT_SIZE) {
+                log.warn("🔍 [数据问答] SQL查询结果过大，长度: {} 字节，进行截断处理", resultData.length());
+                
+                // 截断数据，保留前1MB
+                String truncatedData = resultData.substring(0, MAX_RESULT_SIZE);
+                truncatedData += "\n\n[数据已截断，完整结果请查看数据库]";
+                
+                // 保存截断后的数据到数据库
+                message.setExecutionResult(truncatedData);
+                log.info("🔍 [数据问答] 截断数据已保存到数据库, messageId: {}", message.getId());
+                
+                // 发送截断后的数据给前端
+                try {
+                    Map<String, Object> truncatedResult = new HashMap<>();
+                    truncatedResult.put("content", truncatedData);
+                    truncatedResult.put("type", "sql_result");
+                    truncatedResult.put("truncated", true);
+                    truncatedResult.put("originalSize", resultData.length());
+                    log.info("🔍 [数据问答] 发送截断数据给前端, 数据长度: {}, 原始大小: {}", 
+                        truncatedData.length(), resultData.length());
+                    sendSseMessage(emitter, EventType.LLM_TOKEN, truncatedResult);
+                } catch (Exception e) {
+                    log.error("🔍 [数据问答] 发送SSE截断结果失败", e);
+                }
+            } else {
+                // 数据大小正常，直接保存和发送
+                message.setExecutionResult(resultData);
+                log.info("🔍 [数据问答] 正常数据已保存到数据库, messageId: {}, 数据长度: {}", 
+                    message.getId(), resultData != null ? resultData.length() : 0);
+                
+                try {
+                    Map<String, Object> sseData = Map.of("content", resultData, "type", "sql_result");
+                    log.info("🔍 [数据问答] 发送正常数据给前端, 数据长度: {}", 
+                        resultData != null ? resultData.length() : 0);
+                    log.debug("🔍 [数据问答] 发送给前端的数据内容前200字符: {}", 
+                        resultData != null ? resultData.substring(0, Math.min(200, resultData.length())) : "null");
+                    sendSseMessage(emitter, EventType.LLM_TOKEN, sseData);
+                } catch (Exception e) {
+                    log.error("🔍 [数据问答] 发送SSE正常结果失败", e);
+                }
             }
         } else {
+            log.error("🔍 [数据问答] Python代码执行失败, messageId: {}, error: {}", 
+                message.getId(), result.getErrorMessage());
             message.setErrorMessage(result.getErrorMessage());
             message.setExecutionResult(result.getErrorMessage()); // Also store error in result field for visibility
             sendError(emitter, "Python代码执行失败: " + result.getErrorMessage());
         }
-        messageMapper.updateById(message);
+        
+        try {
+            messageMapper.updateById(message);
+            log.info("🔍 [数据问答] 消息更新完成, messageId: {}", message.getId());
+        } catch (Exception e) {
+            log.error("🔍 [数据问答] 更新消息到数据库失败, messageId: {}", message.getId(), e);
+        }
     }
 
     private ChatMessage saveInitialAssistantMessage(Long sessionId, Long userId, String thinkingContent, String pythonCode) {
@@ -191,9 +243,13 @@ public class ChatOrchestratorServiceImpl implements ChatOrchestratorService {
 
     private void sendSseMessage(SseEmitter emitter, EventType eventType, Object data) {
         try {
-            emitter.send(SseEmitter.event().name(eventType.value).data(objectMapper.writeValueAsString(data)));
+            String jsonData = objectMapper.writeValueAsString(data);
+            log.debug("🔍 [SSE] 发送消息, event: {}, data长度: {}, data内容: {}", 
+                eventType.value, jsonData.length(), jsonData.substring(0, Math.min(200, jsonData.length())));
+            emitter.send(SseEmitter.event().name(eventType.value).data(jsonData));
+            log.info("🔍 [SSE] 消息发送成功, event: {}, data长度: {}", eventType.value, jsonData.length());
         } catch (Exception e) {
-            log.warn("发送SSE消息失败: event={}, data={}, error={}", eventType, data, e.getMessage());
+            log.error("🔍 [SSE] 发送SSE消息失败: event={}, data={}, error={}", eventType, data, e.getMessage(), e);
         }
     }
 

@@ -102,7 +102,7 @@ CREATE TABLE `chat_message` (
   `metadata_json` json DEFAULT NULL COMMENT '扩展元数据JSON',
   `thinking_content` text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci COMMENT 'AI思考过程内容，存储<think></think>标签内的内容',
   `python_code` text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci COMMENT '生成的Python代码，存储```Python代码块```内的内容',
-  `execution_result` text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci COMMENT 'Python代码执行结果，存储执行后的输出内容',
+  `execution_result` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci COMMENT 'Python代码执行结果，存储执行后的输出内容',
   `execution_status` tinyint DEFAULT 1 COMMENT '执行状态：1成功,2失败,0执行中',
   `created_at_ms` bigint NOT NULL COMMENT '创建时间（毫秒）',
   PRIMARY KEY (`id`),
@@ -302,5 +302,29 @@ CREATE TABLE `schema_version` (
   PRIMARY KEY (`id`),
   KEY `idx_db_config` (`db_config_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Schema同步版本表';
+
+CREATE TABLE IF NOT EXISTS `api_config` (
+  `id` bigint NOT NULL AUTO_INCREMENT COMMENT 'API配置ID',
+  `api_name` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT 'API名称',
+  `api_path` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT 'API路径',
+  `api_key` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT 'API密钥',
+  `db_config_id` bigint NOT NULL COMMENT '关联的数据库配置ID',
+  `table_id` bigint NOT NULL COMMENT '关联的数据表ID',
+  `description` varchar(500) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT 'API描述',
+  `status` tinyint NOT NULL DEFAULT '1' COMMENT '状态（1启用 0禁用）',
+  `call_count` bigint NOT NULL DEFAULT '0' COMMENT '调用次数',
+  `last_call_time` datetime DEFAULT NULL COMMENT '最后调用时间',
+  `user_id` bigint NOT NULL COMMENT '创建用户ID',
+  `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `update_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  `rate_limit` int DEFAULT '60' COMMENT '速率限制（每分钟最大请求数）',
+  `timeout` int DEFAULT '30' COMMENT '超时时间（秒）',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_api_path` (`api_path`),
+  KEY `idx_user_id` (`user_id`),
+  KEY `idx_db_config_id` (`db_config_id`),
+  KEY `idx_table_id` (`table_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='API配置表';
+
 
 SET FOREIGN_KEY_CHECKS = 1;
