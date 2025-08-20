@@ -195,78 +195,41 @@ public class ChatController {
     }
 
     /**
-     * 发送消息 - 阻塞式返回
+     * 发送消息 - 普通聊天（非数据问答）
+     * @deprecated 请使用 /api/data-question/ask 进行数据问答
      */
     @PostMapping(value = "/send")
     public String sendMessage(@RequestBody Map<String, Object> requestBody,
                                    HttpServletRequest request) {
-        log.info("📨 [ChatController] 收到发送消息请求");
+        log.info("📨 [ChatController] 收到普通聊天消息请求");
         log.debug("📨 [ChatController] 请求体: {}", requestBody);
         
         Long userId = 1L; // 使用默认用户ID
-        log.info("📨 [ChatController] 用户ID: {}", userId);
         
         try {
             // 解析请求参数
             Long sessionId = Long.valueOf(requestBody.get("sessionId").toString());
-            String content = (String) requestBody.get("question"); // 修改为content
-            Object dbConfigIdObj = requestBody.get("dbConfigId");
-            Long dbConfigId = dbConfigIdObj != null ? Long.valueOf(dbConfigIdObj.toString()) : null;
-            
-            // 处理tableId参数，可能是数字ID或表名字符串
-            Object tableIdObj = requestBody.get("tableId");
-            Long tableId = null;
-            if (tableIdObj != null) {
-                String tableIdStr = tableIdObj.toString();
-                // 尝试解析为Long，如果失败则保持为null（表示传递的是表名）
-                try {
-                    tableId = Long.valueOf(tableIdStr);
-                } catch (NumberFormatException e) {
-                    // 如果不是数字，说明传递的是表名，暂时设置为null
-                    // 后续可以根据表名查询表ID
-                    log.info("📨 [ChatController] tableId参数是表名: {}", tableIdStr);
-                    tableId = null;
-                }
+            String content = (String) requestBody.get("content");
+            if (content == null) {
+                content = (String) requestBody.get("question"); // 兼容旧版本
             }
             
-            log.info("📨 [ChatController] 解析参数: sessionId={}, content={}, dbConfigId={}, tableId={}", 
-                    sessionId, content, dbConfigId, tableId);
+            log.info("📨 [ChatController] 解析参数: sessionId={}, content={}", sessionId, content);
             
             if (content == null || content.trim().isEmpty()) {
                 log.error("📨 [ChatController] 消息内容为空");
                 return "{\"success\":false,\"error\":\"消息内容不能为空\"}";
             }
             
-            // 移除权限校验，实现最小闭环
-            // if (dbConfigId != null && !dbConfigService.checkAccess(userId, dbConfigId, "use")) {
-            //     return "event: error\ndata: {\"error\":\"没有访问该数据库的权限\"}\n\n";
-            // }
-            
-            // 同步处理消息
-            if (dbConfigId != null && tableId != null) {
-                // 数据问答流程
-                log.info("📨 [ChatController] 开始数据问答流程");
-                String result = orchestratorService.processDataQuestionSync(sessionId, userId, content, dbConfigId, tableId);
-                log.info("📨 [ChatController] 数据问答流程完成, 响应长度: {}", result.length());
-                log.debug("📨 [ChatController] 响应内容: {}", result);
-                return result;
-            } else {
-                // 普通聊天（后续扩展）
-                log.info("📨 [ChatController] 开始普通聊天流程");
-                String result = chatService.sendMessageSync(sessionId, userId, content, null);
-                log.info("📨 [ChatController] 普通聊天流程完成, 响应长度: {}", result.length());
-                return result;
-            }
+            // 普通聊天流程
+            log.info("📨 [ChatController] 开始普通聊天流程");
+            String result = chatService.sendMessageSync(sessionId, userId, content, null);
+            log.info("📨 [ChatController] 普通聊天流程完成");
+            return result;
             
         } catch (Exception e) {
             log.error("📨 [ChatController] 发送消息失败: {}", e.getMessage(), e);
-            String errorMessage = "发送消息失败";
-            if (e.getMessage() != null && e.getMessage().contains("timeout")) {
-                errorMessage = "请求处理超时，请稍后重试";
-            } else if (e.getMessage() != null && e.getMessage().contains("interrupt")) {
-                errorMessage = "请求处理被中断，请重试";
-            }
-            return "{\"success\":false,\"error\":\"" + errorMessage + "\"}";
+            return "{\"success\":false,\"error\":\"发送消息失败: " + e.getMessage() + "\"}";
         }
     }
 

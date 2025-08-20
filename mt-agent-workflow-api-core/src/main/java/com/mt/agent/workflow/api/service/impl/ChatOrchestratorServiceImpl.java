@@ -271,6 +271,53 @@ public class ChatOrchestratorServiceImpl implements ChatOrchestratorService {
         }
     }
     
+    /**
+     * 从Python代码中提取SQL语句
+     */
+    private String extractSqlFromPythonCode(String pythonCode) {
+        if (pythonCode == null || pythonCode.trim().isEmpty()) {
+            return null;
+        }
+        
+        try {
+            // 查找 sql = """ ... """ 或 sql = ''' ... ''' 或 sql = " ... " 或 sql = ' ... '
+            Pattern[] patterns = {
+                Pattern.compile("sql\\s*=\\s*\"\"\"(.*?)\"\"\"", Pattern.DOTALL),
+                Pattern.compile("sql\\s*=\\s*'''(.*?)'''", Pattern.DOTALL),
+                Pattern.compile("sql\\s*=\\s*\"([^\"]+)\""),
+                Pattern.compile("sql\\s*=\\s*'([^']+)'"),
+                Pattern.compile("query\\s*=\\s*\"\"\"(.*?)\"\"\"", Pattern.DOTALL),
+                Pattern.compile("query\\s*=\\s*'''(.*?)'''", Pattern.DOTALL),
+                Pattern.compile("query\\s*=\\s*\"([^\"]+)\""),
+                Pattern.compile("query\\s*=\\s*'([^']+)'")
+            };
+            
+            for (Pattern pattern : patterns) {
+                Matcher matcher = pattern.matcher(pythonCode);
+                if (matcher.find()) {
+                    String sql = matcher.group(1).trim();
+                    // 清理SQL语句中的多余空格和换行
+                    sql = sql.replaceAll("\\s+", " ").trim();
+                    return sql;
+                }
+            }
+            
+            // 如果没有找到标准格式，尝试查找execute()方法中的SQL
+            Pattern executePattern = Pattern.compile("execute\\(\\s*[\"']{1,3}(.*?)[\"']{1,3}", Pattern.DOTALL);
+            Matcher executeMatcher = executePattern.matcher(pythonCode);
+            if (executeMatcher.find()) {
+                String sql = executeMatcher.group(1).trim();
+                sql = sql.replaceAll("\\s+", " ").trim();
+                return sql;
+            }
+            
+        } catch (Exception e) {
+            log.warn("提取SQL语句失败: {}", e.getMessage());
+        }
+        
+        return null;
+    }
+    
     @Override
     @Transactional
     public String processDataQuestionSync(Long sessionId, Long userId, String question, Long dbConfigId, Long tableId) {
@@ -375,6 +422,13 @@ public class ChatOrchestratorServiceImpl implements ChatOrchestratorService {
                         log.debug("🔍 [数据问答] Python代码: {}", extractedCode);
                         // 设置Python代码到response对象
                         response.setPythonCode(extractedCode);
+                        
+                        // 尝试从Python代码中提取SQL语句
+                        String sqlStatement = extractSqlFromPythonCode(extractedCode);
+                        if (sqlStatement != null && !sqlStatement.trim().isEmpty()) {
+                            response.setSql(sqlStatement);
+                            log.info("🔍 [数据问答] 提取到SQL语句: {}", sqlStatement);
+                        }
                     } else {
                         log.warn("🔍 [数据问答] 未找到Python代码块");
                     }
