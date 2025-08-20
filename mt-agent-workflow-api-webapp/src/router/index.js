@@ -31,9 +31,9 @@ const routes = [
         component: () => import('../views/DataManagement.vue')
       },
       {
-        path: 'tools',
-        name: 'ToolManagement',
-        component: () => import('../views/ToolManagement.vue')
+        path: 'extension',
+        name: 'ExtensionManagement',
+        component: () => import('../views/ExtensionManagement.vue')
       },
       {
         path: 'data/databases',

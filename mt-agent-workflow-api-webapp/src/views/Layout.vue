@@ -31,21 +31,17 @@
             router
             @select="handleMenuSelect"
           >
+            <el-menu-item index="/admin/data">
+              <el-icon><Coin /></el-icon>
+              <span>数据管理</span>
+            </el-menu-item>
+            <el-menu-item index="/admin/extension">
+              <el-icon><MagicStick /></el-icon>
+              <span>拓展管理</span>
+            </el-menu-item>
             <el-menu-item index="/admin/api">
               <el-icon><Connection /></el-icon>
               <span>接口管理</span>
-            </el-menu-item>
-            <el-menu-item index="/admin/data">
-              <el-icon><Document /></el-icon>
-              <span>数据管理</span>
-            </el-menu-item>
-            <el-menu-item index="/admin/qa">
-              <el-icon><Document /></el-icon>
-              <span>知识管理</span>
-            </el-menu-item>
-            <el-menu-item index="/admin/tools">
-              <el-icon><Tools /></el-icon>
-              <span>工具管理</span>
             </el-menu-item>
             <el-menu-item index="/admin/chat-interface">
               <el-icon><ChatDotRound /></el-icon>
@@ -67,6 +63,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { Coin, MagicStick, Connection, ChatDotRound } from '@element-plus/icons-vue'
 
 const router = useRouter()
 const route = useRoute()

@@ -17,6 +17,7 @@
             placeholder="选择数据库"
             @change="onDatabaseChange"
             class="db-selector"
+            clearable
           >
             <el-option
               v-for="db in databases"
@@ -27,6 +28,7 @@
               <span class="option-label">
                 <i class="el-icon-coin"></i>
                 {{ db.name }}
+                <span class="db-info">{{ db.host }}:{{ db.port }}</span>
               </span>
             </el-option>
           </el-select>
@@ -35,11 +37,23 @@
           
           <el-select 
             v-model="selectedTable" 
-            placeholder="选择数据表"
+            placeholder="选择数据表（可选）"
             :disabled="!selectedDatabase"
             @change="onTableChange"
             class="table-selector"
+            clearable
+            filterable
           >
+            <el-option
+              label="全部表"
+              :value="null"
+            >
+              <span class="option-label">
+                <i class="el-icon-s-grid"></i>
+                全部表
+                <span class="table-comment">可访问所有表</span>
+              </span>
+            </el-option>
             <el-option
               v-for="table in availableTables"
               :key="table.id"
@@ -55,6 +69,16 @@
               </span>
             </el-option>
           </el-select>
+          
+          <!-- 当前选择状态提示 -->
+          <el-tag 
+            v-if="selectedDatabase && selectedTable"
+            type="success"
+            size="small"
+            class="selection-tag"
+          >
+            {{ getCurrentTableName() }}
+          </el-tag>
         </div>
       </div>
       
@@ -393,12 +417,25 @@ const onDatabaseChange = () => {
 
 const onTableChange = () => {
   // 保存到本地存储
+  localStorage.setItem('selectedTable', selectedTable.value || '')
+  
+  // 显示切换提示
   if (selectedTable.value) {
-    localStorage.setItem('selectedTable', selectedTable.value)
-    
-    // 创建或切换会话
-    createOrSwitchSession()
+    const table = availableTables.value.find(t => t.id === selectedTable.value)
+    ElMessage.success(`已切换到表: ${table?.tableName}`)
+  } else {
+    ElMessage.info('已切换到全部表模式')
   }
+  
+  // 创建或切换会话
+  createOrSwitchSession()
+}
+
+// 获取当前选中的表名
+const getCurrentTableName = () => {
+  if (!selectedTable.value) return '全部表'
+  const table = availableTables.value.find(t => t.id === selectedTable.value)
+  return table?.tableName || '未知表'
 }
 
 const createOrSwitchSession = async () => {
@@ -427,7 +464,10 @@ const createOrSwitchSession = async () => {
 }
 
 const sendMessage = async () => {
-  if (!inputMessage.value.trim() || !selectedTable.value || isLoading.value) {
+  if (!inputMessage.value.trim() || !selectedDatabase.value || isLoading.value) {
+    if (!selectedDatabase.value) {
+      ElMessage.warning('请先选择数据库')
+    }
     return
   }
   

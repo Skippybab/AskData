@@ -367,17 +367,18 @@ const loadApis = async () => {
 
 const loadDatabases = async () => {
   try {
-    const response = await fetch('/api/db/list', {
+    const response = await fetch('/api/db/configs/enabled', {
       headers: {
         'Authorization': `Bearer ${localStorage.getItem('token')}`
       }
     })
     const result = await response.json()
     if (result.code === 200) {
-      databases.value = result.data.filter(db => db.status === 1)
+      databases.value = result.data || []
     }
   } catch (error) {
     console.error('加载数据库失败:', error)
+    ElMessage.error('加载数据库配置失败')
   }
 }
 
