@@ -30,11 +30,9 @@ public class DbConfigController {
     @PostMapping("/config")
     public Result<DbConfig> saveConfig(@RequestBody DbConfig config, HttpServletRequest request) {
         try {
-            // 从请求中获取用户ID
-            Long userId = (Long) request.getAttribute("userId");
-            if (userId != null) {
-                config.setUserId(userId);
-            }
+            // 使用默认用户ID
+            Long userId = 1L;
+            config.setUserId(userId);
             DbConfig saved = dbConfigService.createOrUpdate(config);
             return Result.success(saved);
         } catch (Exception e) {
@@ -45,7 +43,7 @@ public class DbConfigController {
     @GetMapping("/config/{id}")
     public Result<DbConfig> getConfig(@PathVariable Long id, HttpServletRequest request) {
         try {
-            Long userId = (Long) request.getAttribute("userId");
+            Long userId = 1L;
             DbConfig cfg = dbConfigService.getById(userId, id);
             if (cfg == null) {
                 return Result.error("配置不存在或无权限访问");
@@ -101,10 +99,8 @@ public class DbConfigController {
     @PostMapping("/config/{id}/verify")
     public Result<Boolean> verify(@PathVariable Long id, HttpServletRequest request) {
         try {
-            Long userId = (Long) request.getAttribute("userId");
-            if (userId == null) {
-                userId = 1L; // 默认用户ID
-            }
+            Long userId = 1L;
+
             
             boolean ok = dbConfigService.verifyConnection(userId, id);
             return ok ? Result.success(true) : Result.error("连接失败");
@@ -128,10 +124,8 @@ public class DbConfigController {
     @DeleteMapping("/config/{id}")
     public Result<Boolean> deleteConfig(@PathVariable Long id, HttpServletRequest request) {
         try {
-            Long userId = (Long) request.getAttribute("userId");
-            if (userId == null) {
-                userId = 1L; // 默认用户ID
-            }
+            Long userId = 1L;
+
             
             // 检查权限
             if (!dbConfigService.checkAccess(userId, id, "manage")) {
@@ -155,7 +149,7 @@ public class DbConfigController {
             @RequestBody Map<String, Integer> requestBody,
             HttpServletRequest request) {
         try {
-            Long userId = (Long) request.getAttribute("userId");
+            Long userId = 1L;
             Integer status = requestBody.get("status");
             if (status == null) {
                 return Result.error("状态参数不能为空");
@@ -177,7 +171,7 @@ public class DbConfigController {
             @RequestBody Map<String, String> requestBody,
             HttpServletRequest request) {
         try {
-            Long userId = (Long) request.getAttribute("userId");
+            Long userId = 1L;
             String newPassword = requestBody.get("password");
             if (newPassword == null || newPassword.isEmpty()) {
                 return Result.error("新密码不能为空");

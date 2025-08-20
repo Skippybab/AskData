@@ -517,21 +517,11 @@ const deleteDatabase = async (db) => {
   })
   
   try {
-    const response = await fetch(`/api/db/config/${db.id}`, {
-      method: 'DELETE',
-      headers: {
-        'Authorization': `Bearer ${localStorage.getItem('token')}`
-      }
-    })
-    const result = await response.json()
-    if (result.code === 200) {
-      ElMessage.success('删除成功')
-      loadDatabases()
-    } else {
-      ElMessage.error(result.message || '删除失败')
-    }
+    const result = await api.dbConfig.delete(db.id)
+    ElMessage.success('删除成功')
+    loadDatabases()
   } catch (error) {
-    ElMessage.error('删除失败')
+    ElMessage.error(error.message || '删除失败')
   }
 }
 
@@ -540,21 +530,11 @@ const syncDatabaseSchema = async () => {
   
   syncing.value = true
   try {
-    const response = await fetch(`/api/db/schema/${selectedDatabase.value.id}/sync`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${localStorage.getItem('token')}`
-      }
-    })
-    const result = await response.json()
-    if (result.code === 200) {
-      ElMessage.success('同步成功')
-      await loadTables(selectedDatabase.value.id)
-    } else {
-      ElMessage.error(result.message || '同步失败')
-    }
+    const result = await api.dbConfig.syncSchema(selectedDatabase.value.id)
+    ElMessage.success('同步成功')
+    await loadTables(selectedDatabase.value.id)
   } catch (error) {
-    ElMessage.error('同步失败')
+    ElMessage.error(error.message || '同步失败')
   } finally {
     syncing.value = false
   }
@@ -570,48 +550,24 @@ const saveTableComment = async (row) => {
   if (row.tempComment === row.tableComment) return
   
   try {
-    const response = await fetch(`/api/db/schema/table/${row.id}/comment`, {
-      method: 'PUT',
-      headers: {
-        'Authorization': `Bearer ${localStorage.getItem('token')}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ comment: row.tempComment })
-    })
-    const result = await response.json()
-    if (result.code === 200) {
-      row.tableComment = row.tempComment
-      ElMessage.success('注释更新成功')
-    } else {
-      row.tempComment = row.tableComment
-      ElMessage.error(result.message || '更新失败')
-    }
+    const result = await api.schema.updateTableComment(row.id, row.tempComment)
+    row.tableComment = row.tempComment
+    ElMessage.success('注释更新成功')
   } catch (error) {
     row.tempComment = row.tableComment
-    ElMessage.error('更新失败')
+    ElMessage.error(error.message || '更新失败')
   }
 }
 
 const updateTableAccess = async (row) => {
   try {
-    const response = await fetch(`/api/db/schema/table/${row.id}/access`, {
-      method: 'PUT',
-      headers: {
-        'Authorization': `Bearer ${localStorage.getItem('token')}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ enabled: row.enabled })
-    })
-    const result = await response.json()
-    if (result.code === 200) {
-      ElMessage.success(row.enabled ? '已开启访问权限' : '已关闭访问权限')
-    } else {
-      row.enabled = !row.enabled // 回滚
-      ElMessage.error(result.message || '更新失败')
-    }
+    // 需要数据库ID和表ID
+    const dbConfigId = selectedDatabase.value.id
+    const result = await api.schema.setTableEnabled(dbConfigId, row.id, row.enabled)
+    ElMessage.success(row.enabled ? '已开启访问权限' : '已关闭访问权限')
   } catch (error) {
     row.enabled = !row.enabled // 回滚
-    ElMessage.error('更新失败')
+    ElMessage.error(error.message || '更新失败')
   }
 }
 

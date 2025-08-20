@@ -1,14 +1,11 @@
 package com.mt.agent.workflow.api.config;
 
-import com.mt.agent.workflow.api.interceptor.JwtAuthenticationInterceptor;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 import org.springframework.web.servlet.config.annotation.CorsRegistry;
-import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 import java.util.Arrays;
@@ -16,15 +13,7 @@ import java.util.Arrays;
 @Configuration
 public class CorsConfig implements WebMvcConfigurer {
 
-    @Autowired
-    private JwtAuthenticationInterceptor jwtAuthenticationInterceptor;
-
-    @Override
-    public void addInterceptors(InterceptorRegistry registry) {
-        registry.addInterceptor(jwtAuthenticationInterceptor)
-                .addPathPatterns("/api/**")
-                .excludePathPatterns("/api/user/login", "/api/user/register");
-    }
+    // JWT拦截器已移除，不再需要权限控制
 
     @Override
     public void addCorsMappings(CorsRegistry registry) {

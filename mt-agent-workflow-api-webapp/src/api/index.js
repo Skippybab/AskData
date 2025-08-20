@@ -65,8 +65,11 @@ export const chatApi = {
   // 创建会话
   createSession: (data) => request.post('/api/chat/session/create', data),
   
-  // 发送查询
-  query: (data) => request.post('/api/chat/query', data),
+  // 发送消息
+  sendMessage: (data) => request.post('/api/chat/send', data),
+  
+  // 发送查询（兼容旧接口）
+  query: (data) => request.post('/api/chat/send', data),
   
   // 获取历史记录
   getHistory: (sessionId) => request.get(`/api/chat/history/${sessionId}`)

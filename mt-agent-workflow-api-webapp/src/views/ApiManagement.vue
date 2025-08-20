@@ -376,15 +376,8 @@ const onDbChange = async (dbId) => {
   }
   
   try {
-    const response = await fetch(`/api/db/schema/tables?dbConfigId=${dbId}`, {
-      headers: {
-        'Authorization': `Bearer ${localStorage.getItem('token')}`
-      }
-    })
-    const result = await response.json()
-    if (result.code === 200) {
-      availableTables.value = result.data.filter(table => table.enabled !== false)
-    }
+    const result = await api.schema.getTables(dbId)
+    availableTables.value = (result.data || []).filter(table => table.enabled !== false)
   } catch (error) {
     console.error('加载表列表失败:', error)
   }

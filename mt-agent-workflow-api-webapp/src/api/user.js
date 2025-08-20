@@ -8,10 +8,10 @@ export const userApi = {
       method: 'post',
       data
     }).then(response => {
-      // 保存token和用户信息
-      if (response.data && response.data.token) {
-        localStorage.setItem('token', response.data.token)
+      // 只保存用户信息，不再需要token
+      if (response.data && response.data.user) {
         localStorage.setItem('user', JSON.stringify(response.data.user))
+        localStorage.setItem('isLoggedIn', 'true')
       }
       return response
     })
@@ -19,8 +19,8 @@ export const userApi = {
 
   // 用户登出
   logout() {
-    localStorage.removeItem('token')
     localStorage.removeItem('user')
+    localStorage.removeItem('isLoggedIn')
   },
 
   // 获取当前用户信息
@@ -31,7 +31,7 @@ export const userApi = {
 
   // 检查是否已登录
   isLoggedIn() {
-    return !!localStorage.getItem('token')
+    return localStorage.getItem('isLoggedIn') === 'true'
   },
 
   // 获取用户列表

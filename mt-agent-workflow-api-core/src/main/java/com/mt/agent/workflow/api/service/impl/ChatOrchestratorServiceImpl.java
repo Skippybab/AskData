@@ -146,7 +146,7 @@ public class ChatOrchestratorServiceImpl implements ChatOrchestratorService {
             String resultData = result.getData();
             log.info("🔍 [数据问答] SQL查询结果数据长度: {} 字节", resultData != null ? resultData.length() : 0);
             log.debug("🔍 [数据问答] SQL查询结果前200字符: {}", 
-                resultData != null ? resultData.substring(0, Math.min(200, resultData.length())) : "null");
+                resultData != null ? resultData.substring(0, Math.min(100, resultData.length())) : "null");
             
             // 检查数据长度，如果超过1MB则进行截断处理
             final int MAX_RESULT_SIZE = 1024 * 1024; // 1MB

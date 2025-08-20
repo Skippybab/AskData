@@ -5,7 +5,6 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.mt.agent.workflow.api.entity.ApiConfig;
 import com.mt.agent.workflow.api.service.ApiConfigService;
 import com.mt.agent.workflow.api.util.Result;
-import com.mt.agent.workflow.api.util.SecurityUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
@@ -22,7 +21,8 @@ import java.util.List;
 public class ApiConfigController {
     
     private final ApiConfigService apiConfigService;
-    private final SecurityUtil securityUtil;
+    // 移除权限控制，使用默认用户ID
+    private static final Long DEFAULT_USER_ID = 1L;
     
     /**
      * 分页查询API配置列表
@@ -34,7 +34,7 @@ public class ApiConfigController {
             @RequestParam(required = false) String apiName,
             @RequestParam(required = false) Integer status) {
         
-        Long userId = securityUtil.getCurrentUserId();
+        Long userId = DEFAULT_USER_ID;
         Page<ApiConfig> page = new Page<>(current, size);
         IPage<ApiConfig> result = apiConfigService.getApiConfigPage(page, apiName, status, userId);
         
@@ -46,7 +46,7 @@ public class ApiConfigController {
      */
     @GetMapping("/list")
     public Result<List<ApiConfig>> getUserApiConfigs() {
-        Long userId = securityUtil.getCurrentUserId();
+        Long userId = DEFAULT_USER_ID;
         List<ApiConfig> configs = apiConfigService.getUserApiConfigs(userId);
         return Result.success(configs);
     }
@@ -62,7 +62,7 @@ public class ApiConfigController {
         }
         
         // 验证权限
-        Long userId = securityUtil.getCurrentUserId();
+        Long userId = DEFAULT_USER_ID;
         if (!config.getUserId().equals(userId)) {
             return Result.error("无权访问该API配置");
         }
@@ -75,7 +75,7 @@ public class ApiConfigController {
      */
     @PostMapping("/create")
     public Result<ApiConfig> createApiConfig(@RequestBody ApiConfig apiConfig) {
-        Long userId = securityUtil.getCurrentUserId();
+        Long userId = DEFAULT_USER_ID;
         apiConfig.setUserId(userId);
         
         // 验证必填字段
@@ -107,7 +107,7 @@ public class ApiConfigController {
             return Result.error("API配置不存在");
         }
         
-        Long userId = securityUtil.getCurrentUserId();
+        Long userId = DEFAULT_USER_ID;
         if (!existing.getUserId().equals(userId)) {
             return Result.error("无权修改该API配置");
         }
@@ -130,7 +130,7 @@ public class ApiConfigController {
      */
     @DeleteMapping("/{id}")
     public Result<String> deleteApiConfig(@PathVariable Long id) {
-        Long userId = securityUtil.getCurrentUserId();
+        Long userId = DEFAULT_USER_ID;
         boolean success = apiConfigService.deleteApiConfig(id, userId);
         
         return success ? Result.success("删除成功") : Result.error("删除失败");
@@ -141,7 +141,7 @@ public class ApiConfigController {
      */
     @PutMapping("/status/{id}")
     public Result<String> toggleApiStatus(@PathVariable Long id) {
-        Long userId = securityUtil.getCurrentUserId();
+        Long userId = DEFAULT_USER_ID;
         boolean success = apiConfigService.toggleApiStatus(id, userId);
         
         return success ? Result.success("状态切换成功") : Result.error("状态切换失败");
@@ -158,7 +158,7 @@ public class ApiConfigController {
             return Result.error("API配置不存在");
         }
         
-        Long userId = securityUtil.getCurrentUserId();
+        Long userId = DEFAULT_USER_ID;
         if (!config.getUserId().equals(userId)) {
             return Result.error("无权操作该API配置");
         }

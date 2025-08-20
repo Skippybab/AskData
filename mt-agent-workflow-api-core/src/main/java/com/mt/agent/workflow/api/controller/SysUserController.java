@@ -4,7 +4,6 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.mt.agent.workflow.api.entity.SysUser;
 import com.mt.agent.workflow.api.service.SysUserService;
-import com.mt.agent.workflow.api.util.JwtUtil;
 import com.mt.agent.workflow.api.util.Result;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
@@ -19,20 +18,17 @@ public class SysUserController {
     
     @Autowired
     private SysUserService userService;
-    @Autowired
-    private JwtUtil jwtUtil;
     
     @PostMapping("/login")
     public Result<Map<String, Object>> login(@RequestBody SysUser loginUser) {
         try {
+            // 使用MD5验证密码
             SysUser user = userService.login(loginUser.getUsername(), loginUser.getPassword());
             if (user != null) {
-                // 生成JWT token
-                String token = jwtUtil.generateToken(user.getId(), user.getUsername(), 0L);
-                
+                // 不再生成JWT token，只返回用户信息
                 Map<String, Object> result = new HashMap<>();
                 result.put("user", user);
-                result.put("token", token);
+                result.put("token", "no-auth-needed"); // 返回固定值，前端可能需要
                 
                 return Result.success("登录成功", result);
             } else {

@@ -12,17 +12,7 @@ const request = axios.create({
 // 请求拦截器
 request.interceptors.request.use(
   config => {
-    // 从localStorage获取token
-    const token = localStorage.getItem('token')
-    // 过滤掉无效的token值
-    if (token && token !== 'null' && token !== 'undefined') {
-      config.headers['Authorization'] = `Bearer ${token}`
-    } else {
-      // 如果没有有效token，不添加Authorization头
-      // 后端会使用默认用户
-      delete config.headers['Authorization']
-    }
-    
+    // 不再需要JWT认证，移除token相关逻辑
     return config
   },
   error => {

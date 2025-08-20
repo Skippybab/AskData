@@ -120,7 +120,7 @@ public class ChatController {
             @RequestParam(defaultValue = "1") Integer current,
             @RequestParam(defaultValue = "20") Integer size,
             HttpServletRequest request) {
-        Long userId = (Long) request.getAttribute("userId");
+        Long userId = 1L; // 使用默认用户ID
         try {
             Page<ChatSession> page = new Page<>(current, size);
             IPage<ChatSession> sessions = chatService.getUserSessions(userId, page);
@@ -157,7 +157,7 @@ public class ChatController {
     public Result<ChatSession> createSession(
             @RequestBody Map<String, Object> requestBody,
             HttpServletRequest request) {
-        Long userId = (Long) request.getAttribute("userId");
+        Long userId = 1L; // 使用默认用户ID
         try {
             String sessionName = (String) requestBody.get("sessionName");
             Object dbConfigIdObj = requestBody.get("dbConfigId");
@@ -184,7 +184,7 @@ public class ChatController {
     public Result<List<ChatMessage>> getMessages(
             @PathVariable Long sessionId,
             HttpServletRequest request) {
-        Long userId = (Long) request.getAttribute("userId");
+        Long userId = 1L; // 使用默认用户ID
         try {
             List<ChatMessage> messages = chatService.getSessionMessages(sessionId, userId);
             return Result.success(messages);
@@ -203,13 +203,13 @@ public class ChatController {
         log.info("📨 [ChatController] 收到发送消息请求");
         log.debug("📨 [ChatController] 请求体: {}", requestBody);
         
-        Long userId = (Long) request.getAttribute("userId");
+        Long userId = 1L; // 使用默认用户ID
         log.info("📨 [ChatController] 用户ID: {}", userId);
         
         try {
             // 解析请求参数
             Long sessionId = Long.valueOf(requestBody.get("sessionId").toString());
-            String content = (String) requestBody.get("content");
+            String content = (String) requestBody.get("question");
             Object dbConfigIdObj = requestBody.get("dbConfigId");
             Long dbConfigId = dbConfigIdObj != null ? Long.valueOf(dbConfigIdObj.toString()) : null;
             Object tableIdObj = requestBody.get("tableId");
@@ -261,7 +261,7 @@ public class ChatController {
      */
     @GetMapping("/user-tools")
     public Result<List<UserToolConfig>> getUserTools(HttpServletRequest request) {
-        Long userId = (Long) request.getAttribute("userId");
+        Long userId = 1L; // 使用默认用户ID
         try {
             List<UserToolConfig> tools = chatService.getUserTools(userId);
             return Result.success(tools);
@@ -279,7 +279,7 @@ public class ChatController {
             @PathVariable Long sessionId,
             @RequestBody Map<String, String> requestBody,
             HttpServletRequest request) {
-        Long userId = (Long) request.getAttribute("userId");
+        Long userId = 1L; // 使用默认用户ID
         try {
             String newTitle = requestBody.get("title");
             if (newTitle == null || newTitle.trim().isEmpty()) {
@@ -301,7 +301,7 @@ public class ChatController {
     public Result<Boolean> deleteSession(
             @PathVariable Long sessionId,
             HttpServletRequest request) {
-        Long userId = (Long) request.getAttribute("userId");
+        Long userId = 1L; // 使用默认用户ID
         try {
             boolean success = chatService.deleteSession(userId, sessionId);
             return success ? Result.success(true) : Result.error("删除失败");
