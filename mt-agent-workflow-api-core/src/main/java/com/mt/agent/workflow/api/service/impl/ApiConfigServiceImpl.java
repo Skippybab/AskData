@@ -66,6 +66,10 @@ public class ApiConfigServiceImpl extends ServiceImpl<ApiConfigMapper, ApiConfig
         if (apiConfig.getCallCount() == null) {
             apiConfig.setCallCount(0L);
         }
+        // 设置tableId默认值为null（表示所有表）
+        if (apiConfig.getTableId() == null) {
+            apiConfig.setTableId(0L); // 0表示所有表
+        }
         
         Date now = new Date();
         apiConfig.setCreateTime(now);

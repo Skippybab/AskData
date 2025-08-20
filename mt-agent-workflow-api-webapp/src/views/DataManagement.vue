@@ -304,6 +304,53 @@
         <el-button type="primary" @click="saveDatabase" :disabled="!connectionValid">保存</el-button>
       </template>
     </el-dialog>
+
+    <!-- 编辑数据库弹窗 -->
+    <el-dialog
+      title="编辑数据库"
+      v-model="showEditDbDialog"
+      width="600px"
+    >
+      <el-form :model="editingDb" label-width="120px">
+        <el-form-item label="数据库名称" required>
+          <el-input v-model="editingDb.name" placeholder="请输入数据库名称" />
+        </el-form-item>
+        
+        <el-form-item label="数据库类型">
+          <el-select v-model="editingDb.dbType" style="width: 100%">
+            <el-option label="MySQL" value="mysql" />
+            <el-option label="PostgreSQL" value="postgresql" />
+            <el-option label="Oracle" value="oracle" />
+            <el-option label="SQL Server" value="sqlserver" />
+          </el-select>
+        </el-form-item>
+        
+        <el-form-item label="主机地址" required>
+          <el-input v-model="editingDb.host" placeholder="例如: 127.0.0.1" />
+        </el-form-item>
+        
+        <el-form-item label="端口" required>
+          <el-input-number v-model="editingDb.port" :min="1" :max="65535" />
+        </el-form-item>
+        
+        <el-form-item label="数据库名" required>
+          <el-input v-model="editingDb.databaseName" placeholder="数据库名称" />
+        </el-form-item>
+        
+        <el-form-item label="用户名" required>
+          <el-input v-model="editingDb.username" placeholder="数据库用户名" />
+        </el-form-item>
+        
+        <el-form-item label="密码">
+          <el-input v-model="editingDb.password" type="password" placeholder="留空表示不修改密码" />
+        </el-form-item>
+      </el-form>
+      
+      <template #footer>
+        <el-button @click="showEditDbDialog = false">取消</el-button>
+        <el-button type="primary" @click="updateDatabase" :loading="testing">保存修改</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -327,10 +374,22 @@ const tableSearchKeyword = ref('')
 // 弹窗控制
 const showTableManageDialog = ref(false)
 const showAddDbDialog = ref(false)
+const showEditDbDialog = ref(false)
 const showAddKnowledgeDialog = ref(false)
 
 // 表单数据
 const dbForm = ref({
+  name: '',
+  dbType: 'mysql',
+  host: '',
+  port: 3306,
+  databaseName: '',
+  username: '',
+  password: ''
+})
+
+const editingDb = ref({
+  id: null,
   name: '',
   dbType: 'mysql',
   host: '',
@@ -446,8 +505,8 @@ const updateDbStatus = async (db) => {
 }
 
 const editDatabase = (db) => {
-  // TODO: 实现编辑数据库功能
-  ElMessage.info('编辑功能开发中')
+  editingDb.value = { ...db }
+  showEditDbDialog.value = true
 }
 
 const deleteDatabase = async (db) => {
@@ -618,6 +677,33 @@ const saveDatabase = async () => {
     connectionValid.value = false
   } catch (error) {
     ElMessage.error(error.message || '添加失败')
+  }
+}
+
+const updateDatabase = async () => {
+  if (!editingDb.value.name || !editingDb.value.host || !editingDb.value.databaseName) {
+    ElMessage.warning('请填写必填项')
+    return
+  }
+  
+  try {
+    const updateData = {
+      ...editingDb.value
+    }
+    // 如果密码为空，不更新密码
+    if (!updateData.password) {
+      delete updateData.password
+      delete updateData.rawPassword
+    } else {
+      updateData.rawPassword = updateData.password
+    }
+    
+    const result = await api.dbConfig.save(updateData)
+    ElMessage.success('数据库更新成功')
+    showEditDbDialog.value = false
+    loadDatabases()
+  } catch (error) {
+    ElMessage.error(error.message || '更新失败')
   }
 }
 

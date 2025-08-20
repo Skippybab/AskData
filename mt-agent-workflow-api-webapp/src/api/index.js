@@ -45,13 +45,19 @@ export const dbConfigApi = {
 // 表结构管理
 export const schemaApi = {
   // 获取表列表
-  getTables: (dbConfigId) => request.get('/api/db/schema/tables', { params: { dbConfigId } }),
+  getTables: (dbConfigId) => request.get(`/api/db/schema/${dbConfigId}/tables`),
+  
+  // 获取启用的表列表
+  getEnabledTables: (dbConfigId) => request.get(`/api/db/schema/${dbConfigId}/tables/enabled`),
   
   // 更新表注释
   updateTableComment: (tableId, comment) => request.put(`/api/db/schema/table/${tableId}/comment`, { comment }),
   
   // 更新表访问权限
-  updateTableAccess: (tableId, enabled) => request.put(`/api/db/schema/table/${tableId}/access`, { enabled })
+  updateTableAccess: (tableId, enabled) => request.put(`/api/db/schema/table/${tableId}/access`, { enabled }),
+  
+  // 设置表启用状态
+  setTableEnabled: (dbConfigId, tableId, enabled) => request.put(`/api/db/schema/${dbConfigId}/tables/${tableId}/enabled`, { enabled })
 }
 
 // 聊天接口

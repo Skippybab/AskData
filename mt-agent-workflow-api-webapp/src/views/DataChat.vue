@@ -227,8 +227,8 @@
                 @click="sendMessage"
                 :disabled="!inputMessage.trim() || isLoading"
                 :loading="isLoading"
+                icon="el-icon-s-promotion"
               >
-                <i class="el-icon-s-promotion"></i>
                 发送
               </el-button>
             </div>
@@ -617,10 +617,11 @@ const formatDate = (date) => {
 
 <style scoped lang="scss">
 .data-chat {
-  height: 100vh;
+  height: calc(100vh - 60px);
   display: flex;
   flex-direction: column;
   background: #f5f6fa;
+  overflow: hidden;
   
   .chat-header {
     display: flex;
@@ -876,12 +877,17 @@ const formatDate = (date) => {
         border-top: 1px solid #e8e8e8;
         padding: 15px 20px;
         background: white;
+        min-height: 140px;
         
         .table-selector {
           margin-bottom: 10px;
         }
         
         .input-box {
+          ::v-deep .el-textarea__inner {
+            resize: none;
+          }
+          
           .input-actions {
             display: flex;
             justify-content: space-between;
@@ -893,6 +899,10 @@ const formatDate = (date) => {
               gap: 20px;
               font-size: 12px;
               color: #999;
+            }
+            
+            .el-button {
+              min-width: 100px;
             }
           }
         }
