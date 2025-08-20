@@ -209,7 +209,7 @@ public class ChatController {
         try {
             // 解析请求参数
             Long sessionId = Long.valueOf(requestBody.get("sessionId").toString());
-            String content = (String) requestBody.get("question");
+            String content = (String) requestBody.get("question"); // 修改为content
             Object dbConfigIdObj = requestBody.get("dbConfigId");
             Long dbConfigId = dbConfigIdObj != null ? Long.valueOf(dbConfigIdObj.toString()) : null;
             
@@ -234,7 +234,7 @@ public class ChatController {
             
             if (content == null || content.trim().isEmpty()) {
                 log.error("📨 [ChatController] 消息内容为空");
-                return "event: error\ndata: {\"error\":\"消息内容不能为空\"}\n\n";
+                return "{\"success\":false,\"error\":\"消息内容不能为空\"}";
             }
             
             // 移除权限校验，实现最小闭环
@@ -266,7 +266,7 @@ public class ChatController {
             } else if (e.getMessage() != null && e.getMessage().contains("interrupt")) {
                 errorMessage = "请求处理被中断，请重试";
             }
-            return "event: error\ndata: {\"error\":\"" + errorMessage + "\"}\n\n";
+            return "{\"success\":false,\"error\":\"" + errorMessage + "\"}";
         }
     }
 

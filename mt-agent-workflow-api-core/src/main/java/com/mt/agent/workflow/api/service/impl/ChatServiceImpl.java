@@ -264,6 +264,6 @@ public class ChatServiceImpl implements ChatService {
     public String sendMessageSync(Long sessionId, Long userId, String content, Long dbConfigId) {
         // TODO: 实现普通聊天功能（非数据问答）的同步版本
         // 这里可以后续扩展为调用其他LLM或处理非结构化对话
-        return "event: error\ndata: {\"error\":\"普通聊天功能暂未实现\"}\n\n";
+        return "{\"success\":false,\"error\":\"普通聊天功能暂未实现\"}";
     }
 }
