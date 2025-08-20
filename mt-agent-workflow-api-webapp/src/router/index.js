@@ -13,7 +13,7 @@ const routes = [
   {
     path: '/admin',
     component: () => import('../views/Layout.vue'),
-    redirect: '/admin/user',
+    redirect: '/admin/api',
     children: [
       {
         path: 'chat-interface',
@@ -21,9 +21,9 @@ const routes = [
         component: () => import('../views/ChatInterface.vue')
       },
       {
-        path: 'user',
-        name: 'UserManagement',
-        component: () => import('../views/UserManagement.vue')
+        path: 'api',
+        name: 'ApiManagement',
+        component: () => import('../views/ApiManagement.vue')
       },
       {
         path: 'data',

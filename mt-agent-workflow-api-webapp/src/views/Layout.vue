@@ -31,9 +31,9 @@
             router
             @select="handleMenuSelect"
           >
-            <el-menu-item index="/admin/user">
-              <el-icon><UserFilled /></el-icon>
-              <span>用户管理</span>
+            <el-menu-item index="/admin/api">
+              <el-icon><Connection /></el-icon>
+              <span>接口管理</span>
             </el-menu-item>
             <el-menu-item index="/admin/data">
               <el-icon><Document /></el-icon>
