@@ -127,6 +127,11 @@ public class PythonDirectExecutorService implements com.mt.agent.workflow.api.se
 
             // 1. 创建临时执行环境
             tempDir = createPythonEnvironment(paramMap);
+            
+            // 1.1 创建数据库连接配置文件
+            if (dbConfigId != null) {
+                createDatabaseConfig(tempDir, dbConfigId);
+            }
 
             // 2. 生成完整的main.py文件
             createMainPythonFile(tempDir, pythonCode);
@@ -343,6 +348,69 @@ public class PythonDirectExecutorService implements com.mt.agent.workflow.api.se
         log.info("Python执行环境创建完成: {}", tempDir);
         return tempDir;
     }
+    
+    /**
+     * 创建数据库连接配置文件
+     */
+    private void createDatabaseConfig(Path tempDir, Long dbConfigId) throws IOException {
+        try {
+            // 获取数据库配置
+            DbConfig dbConfig = dbConfigService.getDbConfig(dbConfigId);
+            if (dbConfig == null) {
+                log.error("未找到数据库配置: dbConfigId={}", dbConfigId);
+                throw new IllegalArgumentException("数据库配置不存在: " + dbConfigId);
+            }
+            
+            // 创建数据库连接Python代码
+            String dbConnCode = """
+                import pymysql
+                import json
+                
+                # 数据库连接配置
+                DB_CONFIG = {
+                    'host': '%s',
+                    'port': %d,
+                    'user': '%s',
+                    'password': '%s',
+                    'database': '%s',
+                    'charset': 'utf8mb4'
+                }
+                
+                def get_db_connection():
+                    '''获取数据库连接'''
+                    return pymysql.connect(**DB_CONFIG)
+                
+                def execute_query(sql):
+                    '''执行查询并返回结果'''
+                    conn = None
+                    cursor = None
+                    try:
+                        conn = get_db_connection()
+                        cursor = conn.cursor(pymysql.cursors.DictCursor)
+                        cursor.execute(sql)
+                        results = cursor.fetchall()
+                        return results
+                    finally:
+                        if cursor:
+                            cursor.close()
+                        if conn:
+                            conn.close()
+                """.formatted(
+                    dbConfig.getHost(),
+                    dbConfig.getPort(),
+                    dbConfig.getUsername(),
+                    dbConfig.getPasswordPlain(), // 需要解密密码
+                    dbConfig.getDatabaseName()
+                );
+            
+            Files.writeString(tempDir.resolve("db_connection.py"), dbConnCode, StandardCharsets.UTF_8);
+            log.info("数据库连接配置创建成功: dbConfigId={}", dbConfigId);
+            
+        } catch (Exception e) {
+            log.error("创建数据库连接配置失败: {}", e.getMessage(), e);
+            throw new IOException("创建数据库连接配置失败", e);
+        }
+    }
 
     /**
      * 创建Java Bridge通信模块
@@ -477,8 +545,13 @@ public class PythonDirectExecutorService implements com.mt.agent.workflow.api.se
                 import json
                 import sys
                 import traceback
+                import os
                 from java_bridge import bridge, report
                 from system_functions import *
+                
+                # 如果存在数据库连接配置，导入它
+                if os.path.exists('db_connection.py'):
+                    from db_connection import execute_query, get_db_connection
 
                 def main():
                     try:

@@ -237,6 +237,12 @@ public class DbConfigServiceImpl implements DbConfigService {
 		}
 		return result > 0;
 	}
+	
+	@Override
+	public DbConfig getDbConfig(Long dbConfigId) {
+		// 内部使用，不检查权限
+		return dbConfigMapper.selectById(dbConfigId);
+	}
 }
 
 

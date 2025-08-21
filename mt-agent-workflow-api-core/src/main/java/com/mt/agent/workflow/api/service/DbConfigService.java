@@ -10,7 +10,7 @@ public interface DbConfigService {
     boolean grantManage(Long dbConfigId, Integer subjectType, Long subjectId);
     boolean checkAccess(Long userId, Long dbConfigId, String perm);
     DbConfig getById(Long userId, Long id);
-    	boolean deleteConfig(Long userId, Long id);
+    boolean deleteConfig(Long userId, Long id);
 	
 	/**
 	 * 更新数据库配置状态
@@ -21,6 +21,11 @@ public interface DbConfigService {
 	 * 获取所有启用的数据库配置
 	 */
 	List<DbConfig> getEnabledConfigs();
+	
+	/**
+	 * 根据ID获取数据库配置（不检查权限，内部使用）
+	 */
+	DbConfig getDbConfig(Long dbConfigId);
 }
 
 
