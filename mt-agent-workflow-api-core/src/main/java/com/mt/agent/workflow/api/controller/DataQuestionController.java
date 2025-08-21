@@ -44,7 +44,13 @@ public class DataQuestionController {
         
         try {
             // 解析请求参数
-            Long sessionId = Long.valueOf(requestBody.get("sessionId").toString());
+            Object sessionIdObj = requestBody.get("sessionId");
+            if (sessionIdObj == null) {
+                log.error("📊 [数据问答] 会话ID为空");
+                return Result.error("会话ID不能为空");
+            }
+            Long sessionId = Long.valueOf(sessionIdObj.toString());
+            
             String question = (String) requestBody.get("question");
             Object dbConfigIdObj = requestBody.get("dbConfigId");
             Long dbConfigId = dbConfigIdObj != null ? Long.valueOf(dbConfigIdObj.toString()) : null;

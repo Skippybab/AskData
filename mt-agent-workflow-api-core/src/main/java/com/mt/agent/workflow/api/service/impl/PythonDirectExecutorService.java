@@ -361,10 +361,21 @@ public class PythonDirectExecutorService implements com.mt.agent.workflow.api.se
                 throw new IllegalArgumentException("数据库配置不存在: " + dbConfigId);
             }
             
+            // 获取解密后的密码并转义特殊字符
+            String password = dbConfig.getPasswordPlain();
+            // 转义Python字符串中的特殊字符
+            password = password.replace("\\", "\\\\")
+                             .replace("'", "\\'")
+                             .replace("\"", "\\\"")
+                             .replace("\n", "\\n")
+                             .replace("\r", "\\r")
+                             .replace("\t", "\\t");
+            
             // 创建数据库连接Python代码
             String dbConnCode = """
                 import pymysql
                 import json
+                import sys
                 
                 # 数据库连接配置
                 DB_CONFIG = {
@@ -378,7 +389,11 @@ public class PythonDirectExecutorService implements com.mt.agent.workflow.api.se
                 
                 def get_db_connection():
                     '''获取数据库连接'''
-                    return pymysql.connect(**DB_CONFIG)
+                    try:
+                        return pymysql.connect(**DB_CONFIG)
+                    except Exception as e:
+                        print(f"数据库连接失败: {e}", file=sys.stderr)
+                        raise
                 
                 def execute_query(sql):
                     '''执行查询并返回结果'''
@@ -389,7 +404,11 @@ public class PythonDirectExecutorService implements com.mt.agent.workflow.api.se
                         cursor = conn.cursor(pymysql.cursors.DictCursor)
                         cursor.execute(sql)
                         results = cursor.fetchall()
-                        return results
+                        # 将结果转换为可序列化的格式
+                        return list(results)
+                    except Exception as e:
+                        print(f"SQL执行失败: {e}", file=sys.stderr)
+                        raise
                     finally:
                         if cursor:
                             cursor.close()
@@ -399,7 +418,7 @@ public class PythonDirectExecutorService implements com.mt.agent.workflow.api.se
                     dbConfig.getHost(),
                     dbConfig.getPort(),
                     dbConfig.getUsername(),
-                    dbConfig.getPasswordPlain(), // 需要解密密码
+                    password,
                     dbConfig.getDatabaseName()
                 );
             

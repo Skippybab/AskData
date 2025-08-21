@@ -70,11 +70,10 @@ public class FunctionUtil {
             throw new IllegalArgumentException("只支持SELECT查询语句");
         }
         
-        // 防止SQL注入
-        if (lowerSql.contains("drop") || 
-            lowerSql.contains("delete") || 
-            lowerSql.contains("update") || 
-            lowerSql.contains("insert")) {
+        // 防止SQL注入 - 改进检测逻辑，避免误判
+        // 检查是否包含危险的DDL/DML语句（考虑单词边界）
+        if (lowerSql.matches(".*\\b(drop|alter|create|truncate)\\s+(table|database|schema|index)\\b.*") ||
+            lowerSql.matches(".*\\b(delete|update|insert)\\s+(from|into|set)\\b.*")) {
             log.error("🔧 [FunctionUtil] 不允许执行修改数据的SQL语句: {}", sql);
             throw new IllegalArgumentException("不允许执行修改数据的SQL语句");
         }
