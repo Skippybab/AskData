@@ -84,10 +84,7 @@ public class DataQuestionController {
             
             // 调用编排服务处理数据问答
             log.info("📊 [数据问答] 开始处理数据问答");
-            String responseJson = orchestratorService.processDataQuestionSync(sessionId, userId, question, dbConfigId, tableId);
-            
-            // 解析响应JSON
-            DataQuestionResponse response = parseResponse(responseJson);
+            DataQuestionResponse response = orchestratorService.processDataQuestionSync(sessionId, userId, question, dbConfigId, tableId);
             
             if (response.isSuccess()) {
                 log.info("📊 [数据问答] 数据问答处理成功");
@@ -122,20 +119,5 @@ public class DataQuestionController {
         return Result.success("数据问答服务正常");
     }
     
-    /**
-     * 解析响应JSON字符串为DataQuestionResponse对象
-     */
-    private DataQuestionResponse parseResponse(String responseJson) {
-        try {
-            // 使用Jackson或其他JSON库解析
-            com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
-            return mapper.readValue(responseJson, DataQuestionResponse.class);
-        } catch (Exception e) {
-            log.error("解析响应JSON失败: {}", e.getMessage());
-            DataQuestionResponse errorResponse = new DataQuestionResponse();
-            errorResponse.setSuccess(false);
-            errorResponse.setError("解析响应失败");
-            return errorResponse;
-        }
-    }
+
 }

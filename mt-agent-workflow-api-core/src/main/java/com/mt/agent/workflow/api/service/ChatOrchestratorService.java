@@ -1,5 +1,6 @@
 package com.mt.agent.workflow.api.service;
 
+import com.mt.agent.workflow.api.dto.DataQuestionResponse;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 /**
@@ -27,9 +28,9 @@ public interface ChatOrchestratorService {
      * @param question 用户问题
      * @param dbConfigId 数据库配置ID
      * @param tableId 表ID
-     * @return SSE格式的响应字符串
+     * @return 数据问答响应对象
      */
-    String processDataQuestionSync(Long sessionId, Long userId, String question, Long dbConfigId, Long tableId);
+    DataQuestionResponse processDataQuestionSync(Long sessionId, Long userId, String question, Long dbConfigId, Long tableId);
     
     /**
      * 流式事件类型

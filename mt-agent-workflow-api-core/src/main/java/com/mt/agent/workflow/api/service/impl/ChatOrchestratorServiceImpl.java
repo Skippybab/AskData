@@ -273,7 +273,7 @@ public class ChatOrchestratorServiceImpl implements ChatOrchestratorService {
     
     @Override
     @Transactional
-    public String processDataQuestionSync(Long sessionId, Long userId, String question, Long dbConfigId, Long tableId) {
+    public DataQuestionResponse processDataQuestionSync(Long sessionId, Long userId, String question, Long dbConfigId, Long tableId) {
         log.info("🔍 [数据问答] 开始处理数据问答(同步版本), sessionId: {}, userId: {}, dbConfigId: {}, tableId: {}", sessionId, userId, dbConfigId, tableId);
         log.info("🔍 [数据问答] 用户问题: {}", question);
         
@@ -281,8 +281,6 @@ public class ChatOrchestratorServiceImpl implements ChatOrchestratorService {
         long startTime = System.currentTimeMillis();
         long timeoutMs = 4 * 60 * 1000; // 4分钟
         
-        // 用于构建SSE格式的响应
-        StringBuilder responseBuilder = new StringBuilder();
         DataQuestionResponse response = DataQuestionResponse.success(sessionId, null);
         
         try {
@@ -304,8 +302,10 @@ public class ChatOrchestratorServiceImpl implements ChatOrchestratorService {
             
             if (tableInfo == null || tableInfo.trim().isEmpty()) {
                 log.error("🔍 [数据问答] 获取表信息失败: 表信息为空");
-                response = DataQuestionResponse.error("未找到表信息");
-                return "event: error\ndata: {\"error\":\"未找到表信息\"}\n\n";
+                response.setSuccess(false);
+                response.setError("未找到表信息");
+                response.setDuration(System.currentTimeMillis() - startTime);
+                return response;
             }
             log.info("🔍 [数据问答] 表信息获取成功, 长度: {}", tableInfo.length());
             log.debug("🔍 [数据问答] 表信息内容: {}", tableInfo.substring(0, Math.min(200, tableInfo.length())) + "...");
@@ -316,8 +316,10 @@ public class ChatOrchestratorServiceImpl implements ChatOrchestratorService {
             // 检查超时
             if (System.currentTimeMillis() - startTime > timeoutMs) {
                 log.error("🔍 [数据问答] 处理超时，已耗时: {}ms", System.currentTimeMillis() - startTime);
-                response = DataQuestionResponse.error("处理超时，请稍后重试");
-                return "event: error\ndata: {\"error\":\"处理超时，请稍后重试\"}\n\n";
+                response.setSuccess(false);
+                response.setError("处理超时，请稍后重试");
+                response.setDuration(System.currentTimeMillis() - startTime);
+                return response;
             }
             
             List<Map<String, String>> history = new ArrayList<>();
@@ -329,8 +331,10 @@ public class ChatOrchestratorServiceImpl implements ChatOrchestratorService {
                 .block(); // 阻塞等待响应
             if (difyResponse == null || difyResponse.trim().isEmpty()) {
                 log.error("🔍 [数据问答] Dify服务返回空响应");
-                response = DataQuestionResponse.error("Dify服务返回空响应");
-                return "event: error\ndata: {\"error\":\"Dify服务返回空响应\"}\n\n";
+                response.setSuccess(false);
+                response.setError("Dify服务返回空响应");
+                response.setDuration(System.currentTimeMillis() - startTime);
+                return response;
             }
             log.info("🔍 [数据问答] Dify响应接收成功, 长度: {}", difyResponse.length());
             log.debug("🔍 [数据问答] Dify响应内容: {}", difyResponse.substring(0, Math.min(500, difyResponse.length())) + "...");
@@ -356,18 +360,8 @@ public class ChatOrchestratorServiceImpl implements ChatOrchestratorService {
                         thinkingContent.append(thinking);
                         log.info("🔍 [数据问答] 提取到思考内容, 长度: {}", thinking.length());
                         log.debug("🔍 [数据问答] 思考内容: {}", thinking.substring(0, Math.min(200, thinking.length())) + "...");
-                        try {
-                            Map<String, String> dataMap = new HashMap<>();
-                            dataMap.put("content", thinking);
-                            dataMap.put("type", "thinking");
-                            String jsonData = objectMapper.writeValueAsString(dataMap);
-                            responseBuilder.append("event: llm_token\ndata: ").append(jsonData).append("\n\n");
-                        } catch (Exception e) {
-                            log.error("🔍 [数据问答] 序列化思考内容失败: {}", e.getMessage(), e);
-                            // 降级处理：使用简单转义
-                            String escapedThinking = thinking.replace("\"", "\\\"").replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t");
-                            responseBuilder.append("event: llm_token\ndata: {\"content\":\"").append(escapedThinking).append("\",\"type\":\"thinking\"}\n\n");
-                        }
+                        // 设置思考内容到response对象
+                        response.setThinking(thinking);
                     } else {
                         log.warn("🔍 [数据问答] 未找到思考内容标签");
                     }
@@ -379,6 +373,8 @@ public class ChatOrchestratorServiceImpl implements ChatOrchestratorService {
                         pythonCode.append(extractedCode);
                         log.info("🔍 [数据问答] 提取到Python代码, 长度: {}", extractedCode.length());
                         log.debug("🔍 [数据问答] Python代码: {}", extractedCode);
+                        // 设置Python代码到response对象
+                        response.setPythonCode(extractedCode);
                     } else {
                         log.warn("🔍 [数据问答] 未找到Python代码块");
                     }
@@ -387,8 +383,10 @@ public class ChatOrchestratorServiceImpl implements ChatOrchestratorService {
                 }
             } catch (Exception e) {
                 log.error("🔍 [数据问答] 解析Dify响应失败: {}", e.getMessage(), e);
-                response = DataQuestionResponse.error("解析Dify响应失败: " + e.getMessage());
-                return "event: error\ndata: {\"error\":\"解析Dify响应失败: " + e.getMessage().replace("\"", "\\\"") + "\"}\n\n";
+                response.setSuccess(false);
+                response.setError("解析Dify响应失败: " + e.getMessage());
+                response.setDuration(System.currentTimeMillis() - startTime);
+                return response;
             }
             
             // 5. 保存初始助手消息
@@ -396,6 +394,7 @@ public class ChatOrchestratorServiceImpl implements ChatOrchestratorService {
             log.info("🔍 [数据问答] 思考内容长度: {}, Python代码长度: {}", thinkingContent.length(), pythonCode.length());
             ChatMessage initialMessage = saveInitialAssistantMessage(sessionId, userId, thinkingContent.toString(), pythonCode.toString());
             log.info("🔍 [数据问答] 初始助手消息保存成功, messageId: {}", initialMessage.getId());
+            response.setMessageId(initialMessage.getId());
             
             // 6. 执行Python代码
             if (pythonCode.length() > 0) {
@@ -404,8 +403,10 @@ public class ChatOrchestratorServiceImpl implements ChatOrchestratorService {
                 // 检查超时
                 if (System.currentTimeMillis() - startTime > timeoutMs) {
                     log.error("🔍 [数据问答] 处理超时，已耗时: {}ms", System.currentTimeMillis() - startTime);
-                    response = DataQuestionResponse.error("处理超时，请稍后重试");
-                    return "event: error\ndata: {\"error\":\"处理超时，请稍后重试\"}\n\n";
+                    response.setSuccess(false);
+                    response.setError("处理超时，请稍后重试");
+                    response.setDuration(System.currentTimeMillis() - startTime);
+                    return response;
                 }
                 
                 log.info("🔍 [数据问答] 开始执行Python代码, messageId: {}, dbConfigId: {}", initialMessage.getId(), dbConfigId);
@@ -422,73 +423,41 @@ public class ChatOrchestratorServiceImpl implements ChatOrchestratorService {
                 if (result.isSuccess()) {
                     initialMessage.setExecutionResult(result.getData());
                     
-                    // 构建响应内容
-                    String responseContent;
-                    if (result.getData() != null && !result.getData().trim().isEmpty()) {
-                        String rawData = result.getData();
-                        log.info("🔍 [数据问答] 原始Python执行结果, 长度: {}", rawData.length());
+                    // 设置执行结果到response对象
+                    String responseContent = result.getData();
+                    if (responseContent != null && !responseContent.trim().isEmpty()) {
+                        response.setResult(responseContent);
                         
-                        // 检测是否为Python字典列表格式
-                        if (rawData.contains("查询结果:") && rawData.contains("[{") && rawData.contains("}]")) {
-                            try {
-                                // 提取Python字典列表部分
-                                int startIndex = rawData.indexOf("[{");
-                                int endIndex = rawData.lastIndexOf("}]") + 2;
-                                if (startIndex != -1 && endIndex != -1) {
-                                    String dictListStr = rawData.substring(startIndex, endIndex);
-                                    log.info("🔍 [数据问答] 检测到Python字典列表, 长度: {}", dictListStr.length());
-                                    
-                                    // 构建包含元数据的JSON响应
-                                    Map<String, Object> dataResponse = new HashMap<>();
-                                    dataResponse.put("rawData", rawData);
-                                    dataResponse.put("parsedData", dictListStr);
-                                    dataResponse.put("dataType", "python_dict_list");
-                                    dataResponse.put("message", "数据解析成功，请在前端查看表格展示");
-                                    
-                                    responseContent = objectMapper.writeValueAsString(dataResponse);
-                                    log.info("🔍 [数据问答] 构建数据响应成功, 长度: {}", responseContent.length());
-                                } else {
-                                    responseContent = rawData;
-                                }
-                            } catch (Exception e) {
-                                log.error("🔍 [数据问答] 解析Python字典列表失败: {}", e.getMessage(), e);
-                                responseContent = rawData;
+                        // 检测结果类型
+                        if (responseContent.contains("查询结果:") && responseContent.contains("[{") && responseContent.contains("}]")) {
+                            response.setResultType("table");
+                            // 提取统计信息
+                            if (responseContent.contains("共返回")) {
+                                int startIdx = responseContent.indexOf("共返回");
+                                int endIdx = responseContent.indexOf("\n", startIdx);
+                                if (endIdx == -1) endIdx = responseContent.length();
+                                response.setResultInfo(responseContent.substring(startIdx, endIdx));
                             }
+                        } else if (responseContent.matches(".*\\d+.*") && responseContent.length() < 100) {
+                            response.setResultType("single");
                         } else {
-                            responseContent = rawData;
+                            response.setResultType("text");
                         }
-                        log.info("🔍 [数据问答] 使用处理后的Python执行结果作为响应, 长度: {}", responseContent.length());
                     } else {
                         // 如果执行结果为空，使用思考内容作为响应
                         responseContent = thinkingContent.toString();
                         if (responseContent.trim().isEmpty()) {
                             responseContent = "查询执行完成，但未返回具体数据。";
                         }
-                        log.info("🔍 [数据问答] Python执行结果为空，使用思考内容作为响应, 长度: {}", responseContent.length());
-                    }
-                    
-                    try {
-                        Map<String, String> dataMap = new HashMap<>();
-                        dataMap.put("content", responseContent);
-                        dataMap.put("type", "sql_result");
-                        String jsonData = objectMapper.writeValueAsString(dataMap);
-                        log.info("🔍 [数据问答] SQL结果JSON序列化成功, 长度: {}", jsonData.length());
-                        log.debug("🔍 [数据问答] SQL结果JSON内容: {}", jsonData);
-                        responseBuilder.append("event: llm_token\ndata: ").append(jsonData).append("\n\n");
-                    } catch (Exception e) {
-                        log.error("🔍 [数据问答] 序列化SQL结果失败: {}", e.getMessage(), e);
-                        log.error("🔍 [数据问答] 原始SQL结果内容: {}", responseContent);
-                        // 降级处理：使用简单转义
-                        String escapedContent = responseContent.replace("\"", "\\\"").replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t");
-                        String fallbackJson = "{\"content\":\"" + escapedContent + "\",\"type\":\"sql_result\"}";
-                        log.info("🔍 [数据问答] 使用降级处理, JSON长度: {}", fallbackJson.length());
-                        responseBuilder.append("event: llm_token\ndata: ").append(fallbackJson).append("\n\n");
+                        response.setResult(responseContent);
+                        response.setResultType("text");
                     }
                 } else {
                     initialMessage.setErrorMessage(result.getErrorMessage());
                     initialMessage.setExecutionResult(result.getErrorMessage());
                     log.error("🔍 [数据问答] Python执行失败: {}", result.getErrorMessage());
-                    responseBuilder.append("event: error\ndata: {\"error\":\"Python代码执行失败: ").append(result.getErrorMessage().replace("\"", "\\\"")).append("\"}\n\n");
+                    response.setSuccess(false);
+                    response.setError("Python代码执行失败: " + result.getErrorMessage());
                 }
                 messageMapper.updateById(initialMessage);
                 log.info("🔍 [数据问答] 消息更新完成");
@@ -499,41 +468,36 @@ public class ChatOrchestratorServiceImpl implements ChatOrchestratorService {
                 if (responseContent.trim().isEmpty()) {
                     responseContent = "AI正在分析您的问题...";
                 }
-                try {
-                    Map<String, String> dataMap = new HashMap<>();
-                    dataMap.put("content", responseContent);
-                    dataMap.put("type", "thinking");
-                    String jsonData = objectMapper.writeValueAsString(dataMap);
-                    responseBuilder.append("event: llm_token\ndata: ").append(jsonData).append("\n\n");
-                } catch (Exception e) {
-                    log.error("🔍 [数据问答] 序列化思考内容失败: {}", e.getMessage(), e);
-                    // 降级处理：使用简单转义
-                    String escapedContent = responseContent.replace("\"", "\\\"").replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t");
-                    responseBuilder.append("event: llm_token\ndata: {\"content\":\"").append(escapedContent).append("\",\"type\":\"thinking\"}\n\n");
-                }
+                response.setResult(responseContent);
+                response.setResultType("text");
             }
             
-            // 8. 添加完成事件
-            log.info("🔍 [数据问答] 步骤8: 添加完成事件");
+            // 8. 设置处理时间
+            log.info("🔍 [数据问答] 步骤8: 设置处理时间");
             
             // 最终超时检查
             if (System.currentTimeMillis() - startTime > timeoutMs) {
                 log.error("🔍 [数据问答] 处理超时，已耗时: {}ms", System.currentTimeMillis() - startTime);
-                response = DataQuestionResponse.error("处理超时，请稍后重试");
-                return "event: error\ndata: {\"error\":\"处理超时，请稍后重试\"}\n\n";
+                response.setSuccess(false);
+                response.setError("处理超时，请稍后重试");
+                response.setDuration(System.currentTimeMillis() - startTime);
+                return response;
             }
             
-            responseBuilder.append("event: done\ndata: {\"status\":\"success\"}\n\n");
+            // 设置处理耗时
+            response.setDuration(System.currentTimeMillis() - startTime);
             
-            log.info("🔍 [数据问答] 数据问答处理完成(同步版本), sessionId: {}, 响应长度: {}, 总耗时: {}ms", 
-                    sessionId, responseBuilder.length(), System.currentTimeMillis() - startTime);
-            log.debug("🔍 [数据问答] 最终响应: {}", responseBuilder.toString());
-            return responseBuilder.toString();
+            log.info("🔍 [数据问答] 数据问答处理完成(同步版本), sessionId: {}, 总耗时: {}ms", 
+                    sessionId, response.getDuration());
+            
+            return response;
             
         } catch (Exception e) {
             log.error("🔍 [数据问答] 处理数据问答失败(同步版本): {}", e.getMessage(), e);
-            response = DataQuestionResponse.error("处理数据问答失败: " + e.getMessage());
-            return "event: error\ndata: {\"error\":\"处理数据问答失败: " + e.getMessage().replace("\"", "\\\"") + "\"}\n\n";
+            response.setSuccess(false);
+            response.setError("处理数据问答失败: " + e.getMessage());
+            response.setDuration(System.currentTimeMillis() - startTime);
+            return response;
         }
     }
 }
