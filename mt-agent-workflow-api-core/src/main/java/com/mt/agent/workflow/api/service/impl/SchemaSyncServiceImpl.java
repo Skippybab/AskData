@@ -82,11 +82,11 @@ public class SchemaSyncServiceImpl implements SchemaSyncService {
 			
 			for (ExternalDbIntrospector.TableMeta t : tables) {
 				try {
-					TableInfo ti = new TableInfo();
-					ti.setDbConfigId(dbConfigId);
-					ti.setTableName(t.tableName);
-					ti.setTableComment(t.tableComment);
-					ti.setEnabled(1); // 默认启用
+									TableInfo ti = new TableInfo();
+				ti.setDbConfigId(dbConfigId);
+				ti.setTableName(t.tableName);
+				ti.setTableComment(t.tableComment);
+				ti.setEnabled(1); // 默认启用所有表，无需手动开启权限
 
 					// 获取并设置DDL
 					try {

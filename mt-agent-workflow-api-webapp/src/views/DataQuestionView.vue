@@ -63,89 +63,91 @@
             
             <!-- AI消息 -->
             <template v-else>
-              <!-- 思考过程 -->
-              <div v-if="msg.thinking" class="thinking-section">
-                <div class="section-header" @click="msg.showThinking = !msg.showThinking">
-                  <i :class="msg.showThinking ? 'el-icon-arrow-down' : 'el-icon-arrow-right'"></i>
-                  思考过程
-                </div>
-                <div v-show="msg.showThinking" class="section-content">
-                  {{ msg.thinking }}
-                </div>
-              </div>
-              
-              <!-- Python代码 -->
-              <div v-if="msg.pythonCode" class="code-section">
-                <div class="section-header" @click="msg.showCode = !msg.showCode">
-                  <i :class="msg.showCode ? 'el-icon-arrow-down' : 'el-icon-arrow-right'"></i>
-                  Python代码
-                </div>
-                <pre v-show="msg.showCode" class="code-content">{{ msg.pythonCode }}</pre>
-              </div>
-              
-              <!-- SQL语句 -->
-              <div v-if="msg.sql" class="sql-section">
-                <div class="section-header">
-                  SQL查询
-                  <el-button size="mini" @click="copySql(msg.sql)">复制</el-button>
-                </div>
-                <pre class="sql-content">{{ msg.sql }}</pre>
-              </div>
-              
-              <!-- 查询结果 -->
-              <div v-if="msg.result" class="result-section">
-                <div class="section-header">
-                  查询结果
-                  <div class="result-actions">
-                    <el-button size="mini" @click="copyResult(msg.result)">复制结果</el-button>
-                    <el-button size="mini" @click="msg.showFullResult = !msg.showFullResult">
-                      {{ msg.showFullResult ? '收起' : '展开全部' }}
-                    </el-button>
+              <div class="assistant-message-wrapper">
+                <!-- 思考过程 -->
+                <div v-if="msg.thinking" class="thinking-section">
+                  <div class="section-header" @click="msg.showThinking = !msg.showThinking">
+                    <i :class="msg.showThinking ? 'el-icon-arrow-down' : 'el-icon-arrow-right'"></i>
+                    思考过程
+                  </div>
+                  <div v-show="msg.showThinking" class="section-content">
+                    {{ msg.thinking }}
                   </div>
                 </div>
-                <div class="result-content" :class="{ 'expanded': msg.showFullResult }">
-                  <!-- 表格形式展示 -->
-                  <el-table 
-                    v-if="msg.resultType === 'table'" 
-                    :data="msg.showFullResult ? msg.resultData : msg.resultData.slice(0, 10)" 
-                    :max-height="msg.showFullResult ? '600' : '300'"
-                    stripe
-                    border
-                    size="small"
-                    style="width: 100%"
-                  >
-                    <el-table-column 
-                      v-for="(col, idx) in msg.resultColumns" 
-                      :key="idx"
-                      :prop="col"
-                      :label="col"
-                      min-width="120"
-                      show-overflow-tooltip
-                    />
-                  </el-table>
-                  <!-- 文本形式展示 -->
-                  <div v-else class="text-result" :class="{ 'collapsed': !msg.showFullResult }">
-                    <pre class="result-text">{{ msg.showFullResult ? msg.result : (msg.result.length > 1500 ? msg.result.substring(0, 1500) + '\n...\n[内容已截断，点击展开查看完整内容]' : msg.result) }}</pre>
+                
+                <!-- Python代码 -->
+                <div v-if="msg.pythonCode" class="code-section">
+                  <div class="section-header" @click="msg.showCode = !msg.showCode">
+                    <i :class="msg.showCode ? 'el-icon-arrow-down' : 'el-icon-arrow-right'"></i>
+                    Python代码
                   </div>
-                  
-                  <!-- 显示记录数量提示 -->
-                  <div v-if="msg.resultType === 'table' && msg.resultData && msg.resultData.length > 10 && !msg.showFullResult" class="result-summary">
-                    <i class="el-icon-info"></i>
-                    仅显示前10条记录，共{{ msg.resultData.length }}条。点击"展开全部"查看所有数据。
+                  <pre v-show="msg.showCode" class="code-content">{{ msg.pythonCode }}</pre>
+                </div>
+                
+                <!-- SQL语句 -->
+                <div v-if="msg.sql" class="sql-section">
+                  <div class="section-header">
+                    SQL查询
+                    <el-button size="mini" @click="copySql(msg.sql)">复制</el-button>
                   </div>
-                  
-                  <!-- 数据截断提示 -->
-                  <div v-if="msg.truncated" class="truncation-notice">
-                    <i class="el-icon-warning"></i>
-                    结果数据过大，已截断显示。原始大小: {{ formatBytes(msg.originalSize) }}
+                  <pre class="sql-content">{{ msg.sql }}</pre>
+                </div>
+                
+                <!-- 查询结果 -->
+                <div v-if="msg.result" class="result-section">
+                  <div class="section-header">
+                    查询结果
+                    <div class="result-actions">
+                      <el-button size="mini" @click="copyResult(msg.result)">复制结果</el-button>
+                      <el-button size="mini" @click="msg.showFullResult = !msg.showFullResult">
+                        {{ msg.showFullResult ? '收起' : '展开全部' }}
+                      </el-button>
+                    </div>
+                  </div>
+                  <div class="result-content" :class="{ 'expanded': msg.showFullResult }">
+                    <!-- 表格形式展示 -->
+                    <el-table 
+                      v-if="msg.resultType === 'table'" 
+                      :data="msg.showFullResult ? msg.resultData : msg.resultData.slice(0, 10)" 
+                      :max-height="msg.showFullResult ? '600' : '300'"
+                      stripe
+                      border
+                      size="small"
+                      style="width: 100%"
+                    >
+                      <el-table-column 
+                        v-for="(col, idx) in msg.resultColumns" 
+                        :key="idx"
+                        :prop="col"
+                        :label="col"
+                        min-width="120"
+                        show-overflow-tooltip
+                      />
+                    </el-table>
+                    <!-- 文本形式展示 -->
+                    <div v-else class="text-result" :class="{ 'collapsed': !msg.showFullResult }">
+                      <pre class="result-text">{{ msg.showFullResult ? msg.result : (msg.result.length > 1500 ? msg.result.substring(0, 1500) + '\n...\n[内容已截断，点击展开查看完整内容]' : msg.result) }}</pre>
+                    </div>
+                    
+                    <!-- 显示记录数量提示 -->
+                    <div v-if="msg.resultType === 'table' && msg.resultData && msg.resultData.length > 10 && !msg.showFullResult" class="result-summary">
+                      <i class="el-icon-info"></i>
+                      仅显示前10条记录，共{{ msg.resultData.length }}条。点击"展开全部"查看所有数据。
+                    </div>
+                    
+                    <!-- 数据截断提示 -->
+                    <div v-if="msg.truncated" class="truncation-notice">
+                      <i class="el-icon-warning"></i>
+                      结果数据过大，已截断显示。原始大小: {{ formatBytes(msg.originalSize) }}
+                    </div>
                   </div>
                 </div>
-              </div>
-              
-              <!-- 错误信息 -->
-              <div v-if="msg.error" class="error-section">
-                <i class="el-icon-warning"></i>
-                {{ msg.error }}
+                
+                <!-- 错误信息 -->
+                <div v-if="msg.error" class="error-section">
+                  <i class="el-icon-warning"></i>
+                  {{ msg.error }}
+                </div>
               </div>
             </template>
           </div>
@@ -203,7 +205,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, nextTick } from 'vue'
+import { ref, onMounted, onUnmounted, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
 
 // 状态管理
@@ -433,11 +435,17 @@ const createSession = async () => {
       // 设置当前数据库
       currentDatabase.value = databases.value.find(db => db.id === selectedDatabase.value)
       
-      // 刷新历史会话列表
-      await loadHistorySessions()
+      // 将新会话添加到列表顶部（如果不存在）
+      const existingIndex = historySessions.value.findIndex(s => s.id === result.data.id)
+      if (existingIndex === -1) {
+        historySessions.value.unshift(result.data)
+      }
       
       // 加载表列表
       await loadTables()
+      
+      // 显示会话列表
+      showSessionList.value = true
     }
   } catch (error) {
     ElMessage.error('创建会话失败')
@@ -456,10 +464,12 @@ const loadTables = async () => {
   if (!currentSession.value) return
   
   try {
+    // 直接加载所有表，不再过滤权限
     const response = await fetch(`/api/table-info/list?dbConfigId=${currentSession.value.dbConfigId}`)
     const result = await response.json()
     if (result.code === 200) {
       tables.value = result.data
+      console.log(`加载表列表成功，共${result.data.length}个表`)
     }
   } catch (error) {
     console.error('加载表列表失败', error)
@@ -481,6 +491,18 @@ const sendMessage = async () => {
     content: question,
     timestamp: new Date()
   })
+  
+  // 更新当前会话的消息数量和最后消息时间
+  if (currentSession.value) {
+    currentSession.value.messageCount = (currentSession.value.messageCount || 0) + 1
+    currentSession.value.lastMessageAtMs = Date.now()
+    
+    // 更新历史会话列表中的对应项
+    const sessionIndex = historySessions.value.findIndex(s => s.id === currentSession.value.id)
+    if (sessionIndex !== -1) {
+      historySessions.value[sessionIndex] = { ...currentSession.value }
+    }
+  }
   
   // 添加AI消息占位
   const aiMessage = {
@@ -509,17 +531,22 @@ const sendMessage = async () => {
   
   let eventSource = null
   let timeoutId = null
+  let responseReceived = false
   
   try {
-    // 设置60秒超时定时器
+    // 设置1分钟超时定时器
     timeoutId = setTimeout(() => {
       console.warn('数据问答请求超时')
       if (eventSource) {
         eventSource.close()
+        eventSource = null
       }
-      aiMessage.error = '请求处理超时（60秒），请稍后重试'
+      if (!responseReceived) {
+        aiMessage.error = '请求处理超时（1分钟），请稍后重试'
+      }
       isLoading.value = false
-    }, 60000) // 60秒超时
+      loadingText.value = '正在思考...'
+    }, 60000) // 1分钟超时
     
     // 使用SSE流式接收数据
     eventSource = new EventSource(`/api/data-question/chat?sessionId=${currentSession.value.id}&question=${encodeURIComponent(question)}&dbConfigId=${currentSession.value.dbConfigId}&tableId=${selectedTable.value || ''}`)
@@ -527,6 +554,7 @@ const sendMessage = async () => {
     eventSource.onmessage = function(event) {
       try {
         const data = JSON.parse(event.data)
+        responseReceived = true
         handleSSEMessage(data, aiMessage)
       } catch (e) {
         console.error('解析SSE消息失败', e)
@@ -536,6 +564,7 @@ const sendMessage = async () => {
     eventSource.addEventListener('llm_token', function(event) {
       try {
         const data = JSON.parse(event.data)
+        responseReceived = true
         handleSSEMessage(data, aiMessage)
       } catch (e) {
         console.error('解析llm_token消息失败', e)
@@ -544,8 +573,13 @@ const sendMessage = async () => {
     
     eventSource.addEventListener('done', function(event) {
       console.log('数据问答完成')
+      responseReceived = true
       isLoading.value = false
-      eventSource.close()
+      loadingText.value = '正在思考...'
+      if (eventSource) {
+        eventSource.close()
+        eventSource = null
+      }
       // 清除超时定时器
       if (timeoutId) {
         clearTimeout(timeoutId)
@@ -555,9 +589,15 @@ const sendMessage = async () => {
     
     eventSource.addEventListener('error', function(event) {
       console.error('SSE连接错误', event)
-      aiMessage.error = '连接错误，请重试'
+      if (!responseReceived) {
+        aiMessage.error = '连接错误，请重试'
+      }
       isLoading.value = false
-      eventSource.close()
+      loadingText.value = '正在思考...'
+      if (eventSource) {
+        eventSource.close()
+        eventSource = null
+      }
       // 清除超时定时器
       if (timeoutId) {
         clearTimeout(timeoutId)
@@ -567,9 +607,15 @@ const sendMessage = async () => {
     
     eventSource.onerror = function(event) {
       console.error('SSE连接失败', event)
-      aiMessage.error = '连接失败，请重试'
+      if (!responseReceived) {
+        aiMessage.error = '连接失败，请重试'
+      }
       isLoading.value = false
-      eventSource.close()
+      loadingText.value = '正在思考...'
+      if (eventSource) {
+        eventSource.close()
+        eventSource = null
+      }
       // 清除超时定时器
       if (timeoutId) {
         clearTimeout(timeoutId)
@@ -689,15 +735,41 @@ const formatBytes = (bytes) => {
 // DOM引用
 const messagesContainer = ref(null)
 
+// 定时器引用
+let refreshInterval = null
+
 // 初始化
 onMounted(async () => {
-  // 先加载数据库列表和历史会话
+  // 先加载数据库列表
   await loadDatabases()
+  
+  // 加载历史会话（会自动选择最近的会话）
   await loadHistorySessions()
   
   // 如果没有当前会话且没有历史会话，且有可用数据库，自动创建会话
-  if (!currentSession.value && historySessions.value.length === 0 && selectedDatabase.value) {
+  if (!currentSession.value && historySessions.value.length === 0 && databases.value.length > 0) {
+    selectedDatabase.value = databases.value[0].id
     await createSession()
+  }
+  
+  // 如果有当前会话，确保滚动到底部
+  if (currentSession.value && messages.value.length > 0) {
+    await nextTick()
+    scrollToBottom()
+  }
+  
+  // 定期刷新会话列表（每30秒）
+  refreshInterval = setInterval(() => {
+    if (showSessionList.value) {
+      loadHistorySessions()
+    }
+  }, 30000)
+})
+
+// 清理
+onUnmounted(() => {
+  if (refreshInterval) {
+    clearInterval(refreshInterval)
   }
 })
 </script>
@@ -838,8 +910,9 @@ onMounted(async () => {
       flex: 1;
       overflow-y: auto;
       padding: 20px;
-      max-height: calc(100vh - 300px);
+      max-height: calc(100vh - 250px);
       min-height: 400px;
+      position: relative;
       
       .message-item {
         margin-bottom: 20px;
@@ -861,156 +934,167 @@ onMounted(async () => {
         
         &.assistant {
           .message-content {
-            .thinking-section,
-            .code-section,
-            .sql-section,
-            .result-section,
-            .error-section {
-              margin-bottom: 10px;
-              border: 1px solid #e8e8e8;
-              border-radius: 5px;
-              overflow: hidden;
+                          .assistant-message-wrapper {
+                max-width: 80%;
+                min-width: 300px;
+                word-wrap: break-word;
+                overflow-wrap: break-word;
+                
+                .thinking-section,
+                .code-section,
+                .sql-section,
+                .result-section,
+                .error-section {
+                  margin-bottom: 10px;
+                  border: 1px solid #e8e8e8;
+                  border-radius: 5px;
+                  overflow: hidden;
+                  max-width: 100%;
+                  word-wrap: break-word;
+                
+                .section-header {
+                  padding: 8px 12px;
+                  background: #f8f9fa;
+                  font-size: 14px;
+                  font-weight: 500;
+                  cursor: pointer;
+                  display: flex;
+                  justify-content: space-between;
+                  align-items: center;
+                  
+                  i {
+                    margin-right: 5px;
+                  }
+                }
+                
+                .section-content,
+                .code-content,
+                .sql-content,
+                .result-content {
+                  padding: 12px;
+                  font-size: 14px;
+                }
+                
+                .code-content,
+                .sql-content {
+                  background: #2d2d2d;
+                  color: #f8f8f2;
+                  font-family: 'Monaco', monospace;
+                  overflow-x: auto;
+                }
+              }
               
-              .section-header {
-                padding: 8px 12px;
-                background: #f8f9fa;
-                font-size: 14px;
-                font-weight: 500;
-                cursor: pointer;
-                display: flex;
-                justify-content: space-between;
-                align-items: center;
+              .error-section {
+                background: #fee;
+                color: #c00;
+                padding: 10px;
                 
                 i {
                   margin-right: 5px;
                 }
               }
               
-              .section-content,
-              .code-content,
-              .sql-content,
-              .result-content {
-                padding: 12px;
-                font-size: 14px;
-              }
-              
-              .code-content,
-              .sql-content {
-                background: #2d2d2d;
-                color: #f8f8f2;
-                font-family: 'Monaco', monospace;
-                overflow-x: auto;
-              }
-            }
-            
-            .error-section {
-              background: #fee;
-              color: #c00;
-              padding: 10px;
-              
-              i {
-                margin-right: 5px;
-              }
-            }
-            
-            // 结果展示特殊样式
-            .result-section {
-              .section-header {
-                .result-actions {
-                  display: flex;
-                  gap: 8px;
-                }
-              }
-              
-              .result-content {
-                max-height: 400px;
-                overflow: auto;
-                
-                &.expanded {
-                  max-height: none;
+              // 结果展示特殊样式
+              .result-section {
+                .section-header {
+                  .result-actions {
+                    display: flex;
+                    gap: 8px;
+                  }
                 }
                 
-                .text-result {
-                  &.collapsed {
-                    max-height: 300px;
-                    overflow: hidden;
-                    position: relative;
+                .result-content {
+                  max-height: 400px;
+                  overflow: auto;
+                  position: relative;
+                  
+                  &.expanded {
+                    max-height: 600px;
+                    overflow-y: auto;
+                  }
+                  
+                  .text-result {
+                    &.collapsed {
+                      max-height: 300px;
+                      overflow: hidden;
+                      position: relative;
+                      
+                      &::after {
+                        content: '';
+                        position: absolute;
+                        bottom: 0;
+                        left: 0;
+                        right: 0;
+                        height: 50px;
+                        background: linear-gradient(transparent, rgba(255, 255, 255, 0.9));
+                      }
+                    }
                     
-                    &::after {
-                      content: '';
-                      position: absolute;
-                      bottom: 0;
-                      left: 0;
-                      right: 0;
-                      height: 50px;
-                      background: linear-gradient(transparent, rgba(255, 255, 255, 0.9));
-                    }
-                  }
-                  
-                  .result-text {
-                    margin: 0;
-                    font-family: 'Monaco', 'Consolas', monospace;
-                    font-size: 13px;
-                    line-height: 1.5;
-                    white-space: pre-wrap;
-                    word-break: break-all;
-                    background: #f8f9fa;
-                    padding: 12px;
-                    border-radius: 4px;
-                    max-width: 100%;
-                    overflow-x: auto;
-                  }
-                }
-                
-                .result-summary {
-                  background: #e8f4fd;
-                  color: #1890ff;
-                  padding: 8px 12px;
-                  margin-top: 8px;
-                  border-radius: 4px;
-                  border: 1px solid #b3d8ff;
-                  font-size: 13px;
-                  
-                  i {
-                    margin-right: 8px;
-                    color: #1890ff;
-                  }
-                }
-                
-                .truncation-notice {
-                  background: #fff3cd;
-                  color: #856404;
-                  padding: 8px 12px;
-                  margin-top: 8px;
-                  border-radius: 4px;
-                  border: 1px solid #ffeaa7;
-                  
-                  i {
-                    margin-right: 8px;
-                    color: #f39c12;
-                  }
-                }
-              }
-              
-              // 表格样式优化
-              .el-table {
-                border-radius: 4px;
-                
-                .el-table__header-wrapper {
-                  .el-table__header {
-                    th {
+                    .result-text {
+                      margin: 0;
+                      font-family: 'Monaco', 'Consolas', monospace;
+                      font-size: 13px;
+                      line-height: 1.5;
+                      white-space: pre-wrap;
+                      word-break: break-all;
                       background: #f8f9fa;
-                      color: #495057;
-                      font-weight: 600;
+                      padding: 12px;
+                      border-radius: 4px;
+                      max-width: 100%;
+                      overflow-x: auto;
+                    }
+                  }
+                  
+                  .result-summary {
+                    background: #e8f4fd;
+                    color: #1890ff;
+                    padding: 8px 12px;
+                    margin-top: 8px;
+                    border-radius: 4px;
+                    border: 1px solid #b3d8ff;
+                    font-size: 13px;
+                    
+                    i {
+                      margin-right: 8px;
+                      color: #1890ff;
+                    }
+                  }
+                  
+                  .truncation-notice {
+                    background: #fff3cd;
+                    color: #856404;
+                    padding: 8px 12px;
+                    margin-top: 8px;
+                    border-radius: 4px;
+                    border: 1px solid #ffeaa7;
+                    
+                    i {
+                      margin-right: 8px;
+                      color: #f39c12;
                     }
                   }
                 }
                 
-                .el-table__body-wrapper {
-                  .el-table__body {
-                    tr {
-                      &:hover > td {
-                        background: #f5f5f5;
+                // 表格样式优化
+                .el-table {
+                  border-radius: 4px;
+                  
+                  .el-table__header-wrapper {
+                    .el-table__header {
+                      th {
+                        background: #f8f9fa;
+                        color: #495057;
+                        font-weight: 600;
+                      }
+                    }
+                  }
+                  
+                  .el-table__body-wrapper {
+                    .el-table__body {
+                      tr {
+                        &:hover > td {
+                          background: #f5f5f5;
+                        }
                       }
                     }
                   }
