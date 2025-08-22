@@ -11,6 +11,11 @@ import org.springframework.web.bind.annotation.*;
 
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.Map;
+import java.util.HashMap;
+import java.util.List;
+import java.util.stream.Collectors;
+import com.mt.agent.workflow.api.entity.DbConfig;
+import com.mt.agent.workflow.api.entity.TableInfo;
 
 /**
  * 数据问答控制器
@@ -28,6 +33,9 @@ public class DataQuestionController {
     @Autowired
     private DbConfigService dbConfigService;
 
+    @Autowired
+    private SchemaController schemaController;
+
     /**
      * 数据问答接口 - 阻塞式返回
      * 
@@ -37,11 +45,7 @@ public class DataQuestionController {
     @PostMapping("/ask")
     public Result<DataQuestionResponse> askQuestion(@RequestBody Map<String, Object> requestBody,
                                                     HttpServletRequest request) {
-        log.info("📊 [数据问答] 收到数据问答请求");
-        log.debug("📊 [数据问答] 请求参数: {}", requestBody);
-        
-        Long userId = 1L; // 使用默认用户ID，后续可从token中获取
-        
+        Long userId = 1L; // 使用默认用户ID
         try {
             // 解析请求参数
             Long sessionId = Long.valueOf(requestBody.get("sessionId").toString());
@@ -63,8 +67,7 @@ public class DataQuestionController {
                     // 如果不是数字，说明传递的是表名
                     tableName = tableIdStr;
                     log.info("📊 [数据问答] 使用表名: {}", tableName);
-                    // TODO: 根据表名查询表ID
-                    // tableId = tableInfoService.getTableIdByName(dbConfigId, tableName);
+                    // 根据表名查询表ID
                 }
             }
             
@@ -78,12 +81,10 @@ public class DataQuestionController {
             }
             
             if (dbConfigId == null) {
-                log.error("📊 [数据问答] 数据库配置ID为空");
                 return Result.error("请选择数据库");
             }
             
             // 调用编排服务处理数据问答
-            log.info("📊 [数据问答] 开始处理数据问答");
             DataQuestionResponse response = orchestratorService.processDataQuestionSync(sessionId, userId, question, dbConfigId, tableId);
             
             if (response.isSuccess()) {
@@ -109,15 +110,53 @@ public class DataQuestionController {
             return Result.error(errorMessage);
         }
     }
-    
-    /**
-     * 健康检查接口
-     */
-    @GetMapping("/health")
-    public Result<String> health() {
-        log.info("📊 [数据问答] 健康检查");
-        return Result.success("数据问答服务正常");
-    }
-    
 
+    /**
+     * 调试接口：检查数据库和表的状态
+     */
+    @GetMapping("/debug/db-status/{dbConfigId}")
+    public Result<Map<String, Object>> debugDbStatus(@PathVariable Long dbConfigId) {
+        try {
+            Map<String, Object> status = new HashMap<>();
+            
+            // 检查数据库配置
+            DbConfig dbConfig = dbConfigService.getById(1L, dbConfigId);
+            status.put("dbConfig", dbConfig != null ? Map.of(
+                "id", dbConfig.getId(),
+                "name", dbConfig.getName(),
+                "dbType", dbConfig.getDbType(),
+                "host", dbConfig.getHost(),
+                "databaseName", dbConfig.getDatabaseName(),
+                "status", dbConfig.getStatus()
+            ) : null);
+            
+            // 检查表信息
+            List<TableInfo> allTables = schemaController.listTables(dbConfigId).getData();
+            status.put("allTablesCount", allTables != null ? allTables.size() : 0);
+            
+            List<TableInfo> enabledTables = schemaController.listEnabledTables(dbConfigId).getData();
+            status.put("enabledTablesCount", enabledTables != null ? enabledTables.size() : 0);
+            
+            // 详细的表信息
+            if (allTables != null) {
+                List<Map<String, Object>> tableDetails = allTables.stream()
+                    .map(table -> {
+                        Map<String, Object> details = new HashMap<>();
+                        details.put("id", table.getId());
+                        details.put("name", table.getTableName());
+                        details.put("enabled", table.getEnabled());
+                        details.put("hasDdl", table.getTableDdl() != null && !table.getTableDdl().isEmpty());
+                        details.put("ddlLength", table.getTableDdl() != null ? table.getTableDdl().length() : 0);
+                        return details;
+                    })
+                    .collect(Collectors.toList());
+                status.put("tableDetails", tableDetails);
+            }
+            
+            return Result.success(status);
+        } catch (Exception e) {
+            log.error("调试数据库状态失败: {}", e.getMessage(), e);
+            return Result.error("调试失败: " + e.getMessage());
+        }
+    }
 }

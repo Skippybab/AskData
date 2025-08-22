@@ -16,6 +16,7 @@ public class TableNameFormatter {
 
     /**
      * 生成标准格式的all_table_name
+     * 完全按照PromptParam.java中的CAICT_TABLE_1格式生成
      * 
      * @param tableName 表名
      * @param tableComment 表注释
@@ -30,7 +31,7 @@ public class TableNameFormatter {
 
         StringBuilder result = new StringBuilder();
         
-        // 1. 表基本信息
+        // 1. 表基本信息 - 完全按照PromptParam.java中的格式
         result.append("SQL数据库的表名是```").append(tableName).append("```，");
         
         if (tableComment != null && !tableComment.trim().isEmpty()) {
@@ -41,7 +42,7 @@ public class TableNameFormatter {
         
         result.append("\n");
         
-        // 2. 字段信息
+        // 2. 字段信息 - 完全按照PromptParam.java中的格式
         result.append("并且字段按照逗号分隔的格式\"字段名,数据类型,字段描述\"列举如下：\n");
         
         // 解析DDL获取字段信息
@@ -58,6 +59,7 @@ public class TableNameFormatter {
 
     /**
      * 从DDL语句中解析字段信息
+     * 完全按照PromptParam.java中的字段格式解析
      * 
      * @param tableDdl 表的DDL语句
      * @return 格式化后的字段信息字符串
@@ -70,10 +72,10 @@ public class TableNameFormatter {
         try {
             StringBuilder fieldsInfo = new StringBuilder();
             
-            // 匹配字段定义的正则表达式
-            // 匹配格式：字段名 数据类型 [约束] [注释]
+            // 更精确的字段匹配正则表达式
+            // 匹配格式：`字段名` 数据类型 [约束] [COMMENT '注释']
             Pattern fieldPattern = Pattern.compile(
-                "\\s*`?([a-zA-Z_][a-zA-Z0-9_]*)`?\\s+([a-zA-Z]+(?:\\([^)]*\\))?)\\s*(?:[^,]*?COMMENT\\s*'([^']*)')?[^,]*?,",
+                "\\s*`([a-zA-Z_][a-zA-Z0-9_]*)`\\s+([a-zA-Z]+(?:\\([^)]*\\))?)\\s*(?:[^,]*?COMMENT\\s*'([^']*)')?[^,]*?(?:,|\\s*$)",
                 Pattern.CASE_INSENSITIVE | Pattern.DOTALL
             );
             
@@ -90,11 +92,14 @@ public class TableNameFormatter {
                         fieldsInfo.append(",\n");
                     }
                     
+                    // 完全按照PromptParam.java中的格式：字段名,数据类型,字段描述
                     fieldsInfo.append(fieldName).append(",")
                              .append(dataType).append(",")
                              .append(comment != null ? comment.trim() : "字段描述");
                     
                     hasFields = true;
+                    
+                    log.debug("解析字段: {} -> {}, {}, {}", fieldName, dataType, comment, "字段描述");
                 }
             }
             
@@ -117,6 +122,7 @@ public class TableNameFormatter {
                             fieldsInfo.append(",\n");
                         }
                         
+                        // 完全按照PromptParam.java中的格式：字段名,数据类型,字段描述
                         fieldsInfo.append(fieldName).append(",")
                                  .append(dataType).append(",")
                                  .append(comment != null ? comment.trim() : "字段描述");

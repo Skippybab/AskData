@@ -39,42 +39,48 @@ public class AISQLQueryServiceImpl implements AISQLQueryService {
             
             // 如果没有提供表结构信息，从数据库获取
             if (tables == null || tables.isEmpty()) {
-                // TODO: 从SchemaContextService获取表结构
                 tables = getDefaultTableSchema();
             }
             
-            // 构建提示词
-            String fullPrompt = buildPrompt(queryText, tableName, pythonCode, historyStr, question, tables);
-            
-            // 调用Dify生成SQL
-            Map<String, Object> inputs = new HashMap<>();
-            inputs.put("prompt", fullPrompt);
-            inputs.put("query_text", queryText);
-            inputs.put("table_name", tableName);
-            
-            String userId = "sql_gen_user_" + System.currentTimeMillis();
-            DifyWorkflowCaller.DifyWorkflowResponse response = difyWorkflowCaller.executeWorkflow(
-                nl2sqlBaseUrl, nl2sqlApiKey, inputs, userId
-            );
-            
-            if (!response.isSuccess()) {
-                log.error("Dify SQL生成失败: {}", response.getErrorMessage());
-                throw new RuntimeException("SQL生成失败: " + response.getErrorMessage());
+            // 尝试调用Dify生成SQL，如果失败则使用降级方案
+            try {
+                // 构建提示词
+                String fullPrompt = buildPrompt(queryText, tableName, pythonCode, historyStr, question, tables);
+                
+                // 调用Dify生成SQL
+                Map<String, Object> inputs = new HashMap<>();
+                inputs.put("prompt", fullPrompt);
+                inputs.put("query_text", queryText);
+                inputs.put("table_name", tableName);
+                
+                String userId = "sql_gen_user_" + System.currentTimeMillis();
+                DifyWorkflowCaller.DifyWorkflowResponse response = difyWorkflowCaller.executeWorkflow(
+                    nl2sqlBaseUrl, nl2sqlApiKey, inputs, userId
+                );
+                
+                if (!response.isSuccess()) {
+                    log.warn("Dify SQL生成失败，使用降级方案: {}", response.getErrorMessage());
+                    return generateFallbackSQL(queryText, tableName, tables);
+                }
+                
+                String sql = response.getOutput("sql");
+                if (sql == null || sql.trim().isEmpty()) {
+                    sql = response.getText();
+                }
+                
+                // 清理SQL语句
+                sql = cleanSQL(sql);
+                
+                // 验证SQL语句
+                validateSQL(sql);
+                
+                log.info("Dify SQL生成成功: {}", sql);
+                return sql;
+                
+            } catch (Exception e) {
+                log.warn("调用Dify失败，使用降级方案: {}", e.getMessage());
+                return generateFallbackSQL(queryText, tableName, tables);
             }
-            
-            String sql = response.getOutput("sql");
-            if (sql == null || sql.trim().isEmpty()) {
-                sql = response.getText();
-            }
-            
-            // 清理SQL语句
-            sql = cleanSQL(sql);
-            
-            // 验证SQL语句
-            validateSQL(sql);
-            
-            log.info("SQL生成成功: {}", sql);
-            return sql;
             
         } catch (Exception e) {
             log.error("生成SQL失败: {}", e.getMessage(), e);
@@ -162,5 +168,42 @@ public class AISQLQueryServiceImpl implements AISQLQueryService {
                 throw new RuntimeException("不允许执行包含 " + keyword + " 的SQL语句");
             }
         }
+    }
+    
+    /**
+     * 生成降级SQL（简单规则匹配）
+     */
+    private String generateFallbackSQL(String queryText, String tableName, String tables) {
+        log.info("使用降级方案生成SQL，queryText: {}, tableName: {}", queryText, tableName);
+        
+        if (tableName == null || tableName.trim().isEmpty()) {
+            tableName = "data_table"; // 默认表名
+        }
+        
+        String lowerQuery = queryText.toLowerCase();
+        String sql;
+        
+        // 简单的规则匹配生成SQL
+        if (lowerQuery.contains("全部") || lowerQuery.contains("所有") || lowerQuery.contains("全部数据")) {
+            sql = String.format("SELECT * FROM %s LIMIT 100", tableName);
+        } else if (lowerQuery.contains("数量") || lowerQuery.contains("统计") || lowerQuery.contains("计数")) {
+            sql = String.format("SELECT COUNT(*) as count FROM %s", tableName);
+        } else if (lowerQuery.contains("启用") || lowerQuery.contains("有效")) {
+            sql = String.format("SELECT * FROM %s WHERE status = 1 LIMIT 100", tableName);
+        } else if (lowerQuery.contains("禁用") || lowerQuery.contains("无效")) {
+            sql = String.format("SELECT * FROM %s WHERE status = 0 LIMIT 100", tableName);
+        } else if (lowerQuery.contains("最新") || lowerQuery.contains("最近")) {
+            sql = String.format("SELECT * FROM %s ORDER BY create_time DESC LIMIT 10", tableName);
+        } else {
+            // 默认查询
+            sql = String.format("SELECT * FROM %s LIMIT 10", tableName);
+        }
+        
+        log.info("降级方案生成的SQL: {}", sql);
+        
+        // 验证生成的SQL
+        validateSQL(sql);
+        
+        return sql;
     }
 }

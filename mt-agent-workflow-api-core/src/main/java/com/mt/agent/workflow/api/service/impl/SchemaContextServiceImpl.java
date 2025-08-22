@@ -8,7 +8,6 @@ import com.mt.agent.workflow.api.infra.ExternalDbExecutor;
 import com.mt.agent.workflow.api.mapper.DbConfigMapper;
 import com.mt.agent.workflow.api.mapper.TableInfoMapper;
 import com.mt.agent.workflow.api.service.SchemaContextService;
-import com.mt.agent.workflow.api.service.TablePermissionService;
 import com.mt.agent.workflow.api.util.CryptoKeyProvider;
 import com.mt.agent.workflow.api.util.DdlParser;
 import lombok.extern.slf4j.Slf4j;
@@ -28,8 +27,6 @@ public class SchemaContextServiceImpl implements SchemaContextService {
     private DbConfigMapper dbConfigMapper;
     @Autowired
     private TableInfoMapper tableInfoMapper;
-    @Autowired
-    private TablePermissionService tablePermissionService;
 
     @Override
     public String buildPromptContext(Long dbConfigId) {
@@ -52,17 +49,8 @@ public class SchemaContextServiceImpl implements SchemaContextService {
                 return "当前没有可用的数据表，请先同步数据库结构并启用表。";
             }
 
-            // 如果指定了用户ID，进行权限过滤
-            if (userId != null) {
-                List<String> accessibleTables = tablePermissionService.getUserAccessibleTables(userId, dbConfigId);
-                enabledTables = enabledTables.stream()
-                    .filter(table -> accessibleTables.contains(table.getTableName()))
-                    .collect(Collectors.toList());
-                
-                if (enabledTables.isEmpty()) {
-                    return "您没有访问任何表的权限，请联系管理员授权。";
-                }
-            }
+            // 移除权限控制，所有表都有权限
+            log.info("🔍 [SchemaContextService] 跳过权限检查，所有表都有权限");
 
             StringBuilder context = new StringBuilder();
             context.append("数据库结构信息：\n\n");
@@ -109,13 +97,8 @@ public class SchemaContextServiceImpl implements SchemaContextService {
                     .last("limit " + maxTables)
             );
 
-            // 如果指定了用户ID，进行权限过滤
-            if (userId != null) {
-                List<String> accessibleTables = tablePermissionService.getUserAccessibleTables(userId, dbConfigId);
-                tables = tables.stream()
-                    .filter(table -> accessibleTables.contains(table.getTableName()))
-                    .collect(Collectors.toList());
-            }
+            // 根据项目需求，用户登录后无需权限控制，跳过权限过滤
+            log.info("🔍 [SchemaContextService] 跳过权限过滤，所有已启用的表都可访问");
 
             return tables.stream()
                 .map(table -> table.getTableName() + 
@@ -170,15 +153,82 @@ public class SchemaContextServiceImpl implements SchemaContextService {
 
     /**
      * 检查用户是否有表的访问权限
+     * 根据项目需求，用户登录后无需权限控制，默认返回true
      */
     public boolean hasTableAccess(Long userId, Long dbConfigId, String tableName) {
-        return tablePermissionService.hasQueryPermission(userId, dbConfigId, tableName);
+        log.debug("🔍 [SchemaContextService] 权限检查跳过，默认返回有权限");
+        return true;
     }
     
     /**
      * 为用户授权表访问权限
+     * 根据项目需求，用户登录后无需权限控制，默认返回true
      */
     public boolean grantTableAccess(Long userId, Long dbConfigId, String tableName) {
-        return tablePermissionService.grantTablePermission(userId, dbConfigId, tableName, 1);
+        log.debug("🔍 [SchemaContextService] 权限授予跳过，默认返回成功");
+        return true;
+    }
+
+    @Override
+    public String getTableSchema(Long dbConfigId, String tableName) {
+        try {
+            log.info("🔍 [SchemaContextService] 获取表结构: dbConfigId={}, tableName={}", dbConfigId, tableName);
+            
+            // 如果tableName为空，返回所有表的结构
+            if (tableName == null || tableName.trim().isEmpty()) {
+                return buildPromptContext(dbConfigId);
+            }
+            
+            // 查找指定表的信息
+            TableInfo tableInfo = tableInfoMapper.selectOne(
+                new LambdaQueryWrapper<TableInfo>()
+                    .eq(TableInfo::getDbConfigId, dbConfigId)
+                    .eq(TableInfo::getTableName, tableName)
+                    .eq(TableInfo::getEnabled, 1)
+            );
+            
+            if (tableInfo == null) {
+                log.warn("🔍 [SchemaContextService] 未找到表信息: {}", tableName);
+                // 尝试查找类似的表名
+                List<TableInfo> allTables = tableInfoMapper.selectList(
+                    new LambdaQueryWrapper<TableInfo>()
+                        .eq(TableInfo::getDbConfigId, dbConfigId)
+                        .eq(TableInfo::getEnabled, 1)
+                        .orderByAsc(TableInfo::getTableName)
+                        .last("limit 10")
+                );
+                
+                StringBuilder availableTables = new StringBuilder("可用的表包括：\n");
+                for (TableInfo table : allTables) {
+                    availableTables.append("- ").append(table.getTableName());
+                    if (table.getTableComment() != null && !table.getTableComment().isEmpty()) {
+                        availableTables.append(" (").append(table.getTableComment()).append(")");
+                    }
+                    availableTables.append("\n");
+                }
+                return availableTables.toString();
+            }
+            
+            // 使用DDL解析器解析表结构
+            String tableStructure = DdlParser.formatDdlToPrompt(tableInfo.getTableDdl());
+            if (tableStructure != null && !tableStructure.trim().isEmpty()) {
+                log.info("🔍 [SchemaContextService] 成功解析表结构");
+                return tableStructure;
+            } else {
+                // 如果DDL解析失败，使用基本信息
+                log.warn("🔍 [SchemaContextService] DDL解析失败，使用基本信息");
+                StringBuilder basicInfo = new StringBuilder();
+                basicInfo.append("表名: ").append(tableInfo.getTableName()).append("\n");
+                if (tableInfo.getTableComment() != null && !tableInfo.getTableComment().isEmpty()) {
+                    basicInfo.append("说明: ").append(tableInfo.getTableComment()).append("\n");
+                }
+                basicInfo.append("字段信息解析失败，请检查DDL格式\n");
+                return basicInfo.toString();
+            }
+            
+        } catch (Exception e) {
+            log.error("🔍 [SchemaContextService] 获取表结构失败: {}", e.getMessage(), e);
+            return String.format("获取表结构失败: %s\n建议检查数据库连接和表名是否正确", e.getMessage());
+        }
     }
 }

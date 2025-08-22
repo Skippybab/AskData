@@ -1,5 +1,6 @@
 package com.mt.agent.workflow.api.controller;
 
+import com.mt.agent.workflow.api.dto.DataQuestionResponse;
 import com.mt.agent.workflow.api.entity.ApiConfig;
 import com.mt.agent.workflow.api.entity.ChatSession;
 import com.mt.agent.workflow.api.service.ApiConfigService;
@@ -95,7 +96,7 @@ public class OpenApiController {
             log.info("OpenAPI调用 - API路径: {}, 问题: {}, 会话ID: {}", apiPath, question, session.getId());
             
             // 6. 执行数据问答
-            String sseResponse = orchestratorService.processDataQuestionSync(
+            DataQuestionResponse dataResponse = orchestratorService.processDataQuestionSync(
                 session.getId(),
                 apiConfig.getUserId(),
                 question,
@@ -103,8 +104,8 @@ public class OpenApiController {
                 apiConfig.getTableId()
             );
             
-            // 7. 解析SSE响应
-            Map<String, Object> result = parseSSEResponse(sseResponse);
+            // 7. 转换为响应格式
+            Map<String, Object> result = convertDataQuestionResponse(dataResponse);
             
             // 8. 更新调用统计
             apiConfigService.updateCallStatistics(apiConfig.getId());
@@ -177,6 +178,50 @@ public class OpenApiController {
         }
         
         return true;
+    }
+    
+    /**
+     * 转换DataQuestionResponse为Map格式
+     */
+    private Map<String, Object> convertDataQuestionResponse(DataQuestionResponse dataResponse) {
+        Map<String, Object> result = new HashMap<>();
+        
+        if (dataResponse == null) {
+            result.put("success", false);
+            result.put("error", "响应为空");
+            return result;
+        }
+        
+        result.put("success", dataResponse.isSuccess());
+        result.put("sessionId", dataResponse.getSessionId());
+        result.put("messageId", dataResponse.getMessageId());
+        result.put("timestamp", dataResponse.getTimestamp());
+        result.put("duration", dataResponse.getDuration());
+        
+        if (dataResponse.isSuccess()) {
+            // 成功响应
+            if (dataResponse.getThinking() != null) {
+                result.put("thinking", dataResponse.getThinking());
+            }
+            if (dataResponse.getPythonCode() != null) {
+                result.put("pythonCode", dataResponse.getPythonCode());
+            }
+            if (dataResponse.getSql() != null) {
+                result.put("sql", dataResponse.getSql());
+            }
+            if (dataResponse.getResult() != null) {
+                result.put("result", dataResponse.getResult());
+                result.put("resultType", dataResponse.getResultType());
+                if (dataResponse.getResultInfo() != null) {
+                    result.put("resultInfo", dataResponse.getResultInfo());
+                }
+            }
+        } else {
+            // 错误响应
+            result.put("error", dataResponse.getError());
+        }
+        
+        return result;
     }
     
     /**

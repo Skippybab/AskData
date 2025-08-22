@@ -224,4 +224,102 @@ public class DdlParser {
         TableStructure structure = parseCreateTable(ddl);
         return formatTableStructure(structure);
     }
+    
+    /**
+     * 从DDL中解析字段信息，返回适合前端展示的Map列表
+     */
+    public static List<java.util.Map<String, Object>> parseColumnsFromDdl(String ddl) {
+        List<java.util.Map<String, Object>> columns = new ArrayList<>();
+        
+        try {
+            TableStructure structure = parseCreateTable(ddl);
+            if (structure != null && structure.getColumns() != null) {
+                for (ColumnInfo column : structure.getColumns()) {
+                    java.util.Map<String, Object> columnMap = new java.util.HashMap<>();
+                    columnMap.put("name", column.getColumnName());
+                    columnMap.put("type", column.getDataType());
+                    columnMap.put("nullable", column.isNullable());
+                    columnMap.put("defaultValue", column.getDefaultValue());
+                    columnMap.put("comment", column.getComment() != null ? column.getComment() : "");
+                    columnMap.put("isPrimaryKey", column.isPrimaryKey());
+                    columnMap.put("isAutoIncrement", column.isAutoIncrement());
+                    columns.add(columnMap);
+                }
+            }
+        } catch (Exception e) {
+            log.error("解析DDL字段信息失败: {}", e.getMessage(), e);
+        }
+        
+        return columns;
+    }
+    
+    /**
+     * 更新DDL中指定字段的注释
+     */
+    public static String updateColumnComment(String ddl, String columnName, String newComment) {
+        if (ddl == null || columnName == null) {
+            return ddl;
+        }
+        
+        try {
+            // 简化实现：查找字段定义行并更新注释
+            String[] lines = ddl.split("\n");
+            StringBuilder updatedDdl = new StringBuilder();
+            
+            for (String line : lines) {
+                String trimmedLine = line.trim();
+                
+                // 检查是否是目标字段的定义行
+                if (isColumnDefinitionLine(trimmedLine, columnName)) {
+                    // 更新字段注释
+                    String updatedLine = updateColumnCommentInLine(line, newComment);
+                    updatedDdl.append(updatedLine);
+                } else {
+                    updatedDdl.append(line);
+                }
+                updatedDdl.append("\n");
+            }
+            
+            return updatedDdl.toString();
+            
+        } catch (Exception e) {
+            log.error("更新字段注释失败: {}", e.getMessage(), e);
+            return ddl;
+        }
+    }
+    
+    /**
+     * 检查是否是指定字段的定义行
+     */
+    private static boolean isColumnDefinitionLine(String line, String columnName) {
+        // 简化的字段匹配逻辑
+        String normalizedLine = line.toLowerCase().trim();
+        String normalizedColumnName = columnName.toLowerCase();
+        
+        // 匹配 `column_name` 或 column_name 开头的行
+        return normalizedLine.startsWith("`" + normalizedColumnName + "`") ||
+               normalizedLine.startsWith(normalizedColumnName + " ");
+    }
+    
+    /**
+     * 在字段定义行中更新注释
+     */
+    private static String updateColumnCommentInLine(String line, String newComment) {
+        // 简化实现：替换或添加COMMENT部分
+        String commentPattern = "COMMENT\\s*'[^']*'";
+        String newCommentPart = "COMMENT '" + newComment.replace("'", "\\'") + "'";
+        
+        if (line.matches(".*COMMENT\\s*'.*'.*")) {
+            // 替换现有注释
+            return line.replaceFirst(commentPattern, newCommentPart);
+        } else {
+            // 添加新注释（在行末添加，去掉可能的逗号和空格后添加）
+            String trimmedLine = line.trim();
+            if (trimmedLine.endsWith(",")) {
+                return trimmedLine.substring(0, trimmedLine.length() - 1) + " " + newCommentPart + ",";
+            } else {
+                return trimmedLine + " " + newCommentPart;
+            }
+        }
+    }
 }

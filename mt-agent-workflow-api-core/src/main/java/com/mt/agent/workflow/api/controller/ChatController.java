@@ -195,42 +195,16 @@ public class ChatController {
     }
 
     /**
-     * 发送消息 - 普通聊天（非数据问答）
-     * @deprecated 请使用 /api/data-question/ask 进行数据问答
+     * 发送消息 - 重定向到数据问答接口
+     * @deprecated 请直接使用 /api/data-question/ask 进行数据问答
      */
     @PostMapping(value = "/send")
-    public String sendMessage(@RequestBody Map<String, Object> requestBody,
-                                   HttpServletRequest request) {
-        log.info("📨 [ChatController] 收到普通聊天消息请求");
-        log.debug("📨 [ChatController] 请求体: {}", requestBody);
+    public Result<String> sendMessage(@RequestBody Map<String, Object> requestBody,
+                                      HttpServletRequest request) {
+        log.warn("📨 [ChatController] 收到已废弃的普通聊天请求，建议使用数据问答接口");
         
-        Long userId = 1L; // 使用默认用户ID
-        
-        try {
-            // 解析请求参数
-            Long sessionId = Long.valueOf(requestBody.get("sessionId").toString());
-            String content = (String) requestBody.get("content");
-            if (content == null) {
-                content = (String) requestBody.get("question"); // 兼容旧版本
-            }
-            
-            log.info("📨 [ChatController] 解析参数: sessionId={}, content={}", sessionId, content);
-            
-            if (content == null || content.trim().isEmpty()) {
-                log.error("📨 [ChatController] 消息内容为空");
-                return "{\"success\":false,\"error\":\"消息内容不能为空\"}";
-            }
-            
-            // 普通聊天流程
-            log.info("📨 [ChatController] 开始普通聊天流程");
-            String result = chatService.sendMessageSync(sessionId, userId, content, null);
-            log.info("📨 [ChatController] 普通聊天流程完成");
-            return result;
-            
-        } catch (Exception e) {
-            log.error("📨 [ChatController] 发送消息失败: {}", e.getMessage(), e);
-            return "{\"success\":false,\"error\":\"发送消息失败: " + e.getMessage() + "\"}";
-        }
+        // 返回重定向提示，不执行实际的聊天逻辑
+        return Result.error("此接口已废弃，请使用 /api/data-question/ask 进行数据问答");
     }
 
     /**

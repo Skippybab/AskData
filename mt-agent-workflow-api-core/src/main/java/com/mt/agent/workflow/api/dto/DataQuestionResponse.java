@@ -7,7 +7,7 @@ import lombok.NoArgsConstructor;
 
 /**
  * 数据问答响应DTO
- * 用于替代SSE方式，提供简单的JSON响应格式
+ * 提供JSON响应格式
  */
 @Data
 @Builder

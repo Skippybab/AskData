@@ -2,8 +2,8 @@ import request from './request'
 
 // API配置管理
 export const apiConfigApi = {
-  // 获取API列表
-  list: () => request.get('/api/api-config/list'),
+  // 获取API列表（改为使用分页接口）
+  list: (params = { current: 1, size: 100 }) => request.get('/api/api-config/page', { params }),
   
   // 创建API
   create: (data) => request.post('/api/api-config/create', data),
@@ -60,19 +60,64 @@ export const schemaApi = {
   setTableEnabled: (dbConfigId, tableId, enabled) => request.put(`/api/db/schema/${dbConfigId}/tables/${tableId}/enabled`, { enabled })
 }
 
+// 表信息管理
+export const tableInfoApi = {
+  // 获取表列表
+  getTableList: (dbConfigId) => request.get(`/api/table-info/list`, { params: { dbConfigId } }),
+  
+  // 获取表详情
+  getTableDetail: (dbConfigId, tableId) => request.get(`/api/table-info/detail`, { params: { dbConfigId, tableId } }),
+  
+  // 获取表字段信息
+  getTableColumns: (dbConfigId, tableId) => request.get(`/api/table-info/columns`, { params: { dbConfigId, tableId } }),
+  
+  // 更新字段备注
+  updateColumnComment: (dbConfigId, tableId, columnName, comment) => 
+    request.put(`/api/table-info/columns/comment`, null, { 
+      params: { dbConfigId, tableId, columnName, comment }
+    }),
+  
+  // 获取表权限
+  getTablePermission: (dbConfigId, tableId) => request.get(`/api/table-info/permission`, { params: { dbConfigId, tableId } }),
+  
+  // 更新表权限
+  updateTablePermission: (dbConfigId, tableId, enabled) => 
+    request.put(`/api/table-info/permission`, null, { 
+      params: { dbConfigId, tableId, enabled }
+    })
+}
+
 // 聊天接口
 export const chatApi = {
   // 创建会话
-  createSession: (data) => request.post('/api/chat/session/create', data),
+  createSession: (data) => request.post('/api/chat/sessions', data),
   
-  // 发送消息
-  sendMessage: (data) => request.post('/api/chat/send', data),
+  // 获取会话列表
+  getSessions: (params = { current: 1, size: 20 }) => request.get('/api/chat/sessions', { params }),
   
-  // 发送查询（兼容旧接口）
-  query: (data) => request.post('/api/chat/send', data),
+  // 获取会话消息
+  getMessages: (sessionId) => request.get(`/api/chat/sessions/${sessionId}/messages`),
   
-  // 获取历史记录
-  getHistory: (sessionId) => request.get(`/api/chat/history/${sessionId}`)
+  // 重命名会话
+  renameSession: (sessionId, title) => request.put(`/api/chat/sessions/${sessionId}/title`, { title }),
+  
+  // 删除会话
+  deleteSession: (sessionId) => request.delete(`/api/chat/sessions/${sessionId}`),
+  
+  // 获取用户工具
+  getUserTools: () => request.get('/api/chat/user-tools'),
+  
+  // 测试Dify连接
+  testDify: () => request.get('/api/chat/test-dify')
+}
+
+// 数据问答接口
+export const dataQuestionApi = {
+  // 数据问答
+  ask: (data) => request.post('/api/data-question/ask', data),
+  
+  // 获取问答历史
+  getHistory: (sessionId) => request.get(`/api/data-question/history/${sessionId}`)
 }
 
 // 工具管理（预留）
@@ -91,6 +136,8 @@ export default {
   apiConfig: apiConfigApi,
   dbConfig: dbConfigApi,
   schema: schemaApi,
+  tableInfo: tableInfoApi,
   chat: chatApi,
+  dataQuestion: dataQuestionApi,
   tool: toolApi
 }

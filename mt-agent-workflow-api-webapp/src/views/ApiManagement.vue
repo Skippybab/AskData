@@ -349,7 +349,9 @@ onMounted(() => {
 const loadApis = async () => {
   try {
     const result = await api.apiConfig.list()
-    apis.value = (result.data || []).map(api => ({
+    // 修复：正确处理分页响应数据
+    const apiList = result.data && result.data.records ? result.data.records : (result.data || [])
+    apis.value = apiList.map(api => ({
       ...api,
       showKey: false
     }))

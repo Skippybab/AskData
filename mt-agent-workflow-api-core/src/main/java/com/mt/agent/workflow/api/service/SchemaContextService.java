@@ -48,4 +48,12 @@ public interface SchemaContextService {
      * @return 样例数据JSON
      */
     String getTableSample(Long dbConfigId, String tableName, int maxRows);
+    
+    /**
+     * 获取指定表的结构信息
+     * @param dbConfigId 数据库配置ID
+     * @param tableName 表名
+     * @return 表结构描述字符串
+     */
+    String getTableSchema(Long dbConfigId, String tableName);
 }

@@ -1,20 +1,22 @@
 package com.mt.agent.workflow.api.service.impl;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mt.agent.workflow.api.dto.PythonExecutionResult;
 import com.mt.agent.workflow.api.entity.ChatMessage;
-import com.mt.agent.workflow.api.entity.DbConfig;
-import com.mt.agent.workflow.api.exception.DataAccessException;
-import com.mt.agent.workflow.api.exception.ExecutionFailureException;
+import com.mt.agent.workflow.api.entity.ChatSession;
 import com.mt.agent.workflow.api.mapper.ChatMessageMapper;
+import com.mt.agent.workflow.api.mapper.ChatSessionMapper;
 import com.mt.agent.workflow.api.service.DbConfigService;
+import com.mt.agent.workflow.api.service.PythonExecutorService;
+import com.mt.agent.workflow.api.service.SqlExecutionService;
+import com.mt.agent.workflow.api.service.AISQLQueryService;
+import com.mt.agent.workflow.api.service.SchemaContextService;
+import com.mt.agent.workflow.api.service.impl.SubEventReporter;
 import com.mt.agent.workflow.api.util.BufferUtil;
-import com.mt.agent.workflow.api.util.FunctionUtil;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-// import org.jetbrains.annotations.Nullable; // 移除此依赖，使用javax.annotation代替
-import org.springframework.beans.factory.annotation.Value;
+import org.jetbrains.annotations.Nullable;
 import org.springframework.stereotype.Service;
 
 import java.io.*;
@@ -24,28 +26,29 @@ import java.nio.file.Path;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * Python直接执行服务
  * 通过外部Python进程执行大模型生成的Python代码
- * 基于little-giant-agent项目的成熟实现改进
+ *
+ * @author lfz
+ * @date 2025/1/7
  */
 @Slf4j
-@Service("pythonDirectExecutorService")
+@Service
 @RequiredArgsConstructor
-public class PythonDirectExecutorService implements com.mt.agent.workflow.api.service.PythonExecutorService {
+public class PythonDirectExecutorService implements PythonExecutorService {
 
-    private final FunctionUtil functionUtil;
-    private final ObjectMapper objectMapper;
-    private final BufferUtil bufferUtil;
-    private final ChatMessageMapper chatMessageMapper;
+    private final ChatMessageMapper messageMapper;
+    private final ChatSessionMapper chatSessionMapper;
     private final DbConfigService dbConfigService;
-
-    @Value("${python.executor.path:python}")
-    private String pythonExecutablePath;
-
-    @Value("${python.executor.timeout:300}")
-    private int executionTimeoutSeconds;
+    private final BufferUtil bufferUtil;
+    private final ObjectMapper objectMapper;
+    private final SqlExecutionService sqlExecutionService;
+    private final AISQLQueryService aiSqlQueryService;
+    private final SchemaContextService schemaContextService;
 
     // 存储Python执行过程中的错误信息，用于异常分析
     private String pythonErrorOutput = "";
@@ -54,100 +57,39 @@ public class PythonDirectExecutorService implements com.mt.agent.workflow.api.se
     @PostConstruct
     private void configureObjectMapper() {
         // 确保ObjectMapper正确处理UTF-8编码，不转义非ASCII字符
-        this.objectMapper.getFactory().configure(
-                com.fasterxml.jackson.core.JsonGenerator.Feature.ESCAPE_NON_ASCII, false);
+        this.objectMapper.getFactory().disable(
+                com.fasterxml.jackson.core.JsonGenerator.Feature.ESCAPE_NON_ASCII);
     }
 
-    /**
-     * 执行Python代码并返回结果
-     */
-    public PythonExecutionResult executePythonCodeWithResult(Long messageId, Long dbConfigId) {
-        log.info("🐍 [Python执行器] 开始执行Python代码, messageId: {}, dbConfigId: {}", messageId, dbConfigId);
-
-        ChatMessage chatMessage = chatMessageMapper.selectById(messageId);
-        if (chatMessage == null || chatMessage.getPythonCode() == null || chatMessage.getPythonCode().trim().isEmpty()) {
-            log.error("🐍 [Python执行器] 未找到消息或Python代码为空, messageId: {}", messageId);
-            return PythonExecutionResult.failure("未找到消息或Python代码为空", "INVALID_INPUT");
-        }
-
-        String userId = String.valueOf(chatMessage.getUserId());
-        String pythonCode = chatMessage.getPythonCode();
-
-        // 创建参数映射
-        HashMap<String, Object> paramMap = new HashMap<>();
-        paramMap.put("messageId", messageId);
-        paramMap.put("dbConfigId", dbConfigId);
-        paramMap.put("userId", userId);
-
-        // 创建一个简单的日志报告器
-        SimpleLogReporter reporter = new SimpleLogReporter();
-
-        try {
-            // 执行Python代码
-            executePythonCode(pythonCode, paramMap, reporter, userId, dbConfigId);
-            
-            // 获取执行结果
-            String result = bufferUtil.getField(userId, "executionResult");
-            if (result != null) {
-                // 更新数据库中的执行结果
-                updateExecutionResult(chatMessage, result, true);
-                return PythonExecutionResult.success(result);
-            } else {
-                return PythonExecutionResult.failure("执行完成但未获取到结果", "NO_RESULT");
-            }
-        } catch (DataAccessException e) {
-            log.error("🐍 [Python执行器] 数据访问异常: {}", e.getMessage(), e);
-            updateExecutionResult(chatMessage, e.getMessage(), false);
-            return PythonExecutionResult.failure(e.getMessage(), e.getErrorCode());
-        } catch (ExecutionFailureException e) {
-            log.error("🐍 [Python执行器] 执行失败异常: {}", e.getMessage(), e);
-            updateExecutionResult(chatMessage, e.getMessage(), false);
-            return PythonExecutionResult.failure(e.getMessage(), e.getErrorCode());
-        } catch (Exception e) {
-            log.error("🐍 [Python执行器] 未知异常: {}", e.getMessage(), e);
-            updateExecutionResult(chatMessage, e.getMessage(), false);
-            return PythonExecutionResult.failure(e.getMessage(), "UNKNOWN_ERROR");
-        }
-    }
-
-    /**
-     * 执行Python代码
-     */
+    @Override
     public void executePythonCode(String pythonCode, HashMap<String, Object> paramMap,
-                                   SubEventReporter reporter, String userId, Long dbConfigId) {
+                                 SubEventReporter reporter, String userId) {
+        log.info("🔍 [Python执行] 开始执行Python代码（旧版本接口）, userId: {}", userId);
         Path tempDir = null;
         Process pythonProcess = null;
-        pythonErrorOutput = ""; // 重置错误输出
+        pythonErrorOutput = "";
 
         try {
-            reporter.reportStep("开始准备Python执行环境\n");
-
-            // 设置dbConfigId到BufferUtil
-            bufferUtil.setField(userId, "dbConfigId", dbConfigId);
+            log.info("准备Python执行环境...");
 
             // 1. 创建临时执行环境
             tempDir = createPythonEnvironment(paramMap);
-            
-            // 1.1 创建数据库连接配置文件
-            if (dbConfigId != null) {
-                createDatabaseConfig(tempDir, dbConfigId);
-            }
 
             // 2. 生成完整的main.py文件
             createMainPythonFile(tempDir, pythonCode);
 
-            reporter.reportStep("启动Python进程执行代码\n");
+            log.info("启动Python进程执行代码...");
 
             // 3. 启动Python进程
             pythonProcess = startPythonProcess(tempDir);
 
             // 4. 处理Python进程的输入输出
-            handlePythonExecution(pythonProcess, reporter, userId);
+            handlePythonExecution(pythonProcess, userId);
 
             // 5. 等待执行完成
-            boolean finished = pythonProcess.waitFor(executionTimeoutSeconds, TimeUnit.SECONDS);
+            boolean finished = pythonProcess.waitFor(300, TimeUnit.SECONDS);
             if (!finished) {
-                throw ExecutionFailureException.timeoutError("Python代码执行超时（" + executionTimeoutSeconds + "秒）");
+                throw new RuntimeException("Python代码执行超时（300秒）");
             }
 
             int exitCode = pythonProcess.exitValue();
@@ -156,18 +98,14 @@ public class PythonDirectExecutorService implements com.mt.agent.workflow.api.se
                 throw analyzeAndCreateException(exitCode, pythonErrorOutput, pythonCode);
             }
 
-            reporter.reportStep("Python代码执行完成\n");
+            log.info("Python代码执行完成");
 
-        } catch (DataAccessException | ExecutionFailureException e) {
-            // 已经是分类异常，直接重新抛出
-            log.error("Python代码执行失败: {}", e.getMessage(), e);
-            reporter.reportStep("执行失败: " + e.getMessage());
-            throw e;
         } catch (Exception e) {
-            // 未分类的异常，进行分析
             log.error("Python代码执行失败", e);
+            if (reporter != null) {
             reporter.reportStep("执行失败: " + e.getMessage());
-            throw analyzeGenericException(e, pythonCode);
+            }
+            throw new RuntimeException("Python代码执行失败: " + e.getMessage(), e);
         } finally {
             // 清理资源
             if (pythonProcess != null && pythonProcess.isAlive()) {
@@ -177,156 +115,141 @@ public class PythonDirectExecutorService implements com.mt.agent.workflow.api.se
         }
     }
 
-    /**
-     * 分析Python执行异常并创建相应的异常类型
-     */
-    private RuntimeException analyzeAndCreateException(int exitCode, String errorOutput, String pythonCode) {
-        log.info("分析Python执行异常 - 退出码: {}, 错误输出: {}", exitCode, errorOutput);
+    @Override
+    public Object executePythonCodeWithResult(String pythonCode, HashMap<String, Object> paramMap, String userId) {
+        log.info("🔍 [Python执行] 开始执行Python代码并返回结果（旧版本接口）, userId: {}", userId);
+        Path tempDir = null;
+        Process pythonProcess = null;
+        pythonErrorOutput = "";
 
-        String lowerErrorOutput = errorOutput.toLowerCase();
+        try {
+            log.info("准备Python执行环境...");
 
-        // 检测数组越界和数据访问相关异常
-        if (containsDataAccessError(lowerErrorOutput)) {
-            return createDataAccessException(errorOutput);
-        }
+            // 1. 创建临时执行环境
+            tempDir = createPythonEnvironment(paramMap);
 
-        // 检测语法错误
-        if (containsSyntaxError(lowerErrorOutput)) {
-            return ExecutionFailureException.syntaxError("代码语法错误 - " + extractErrorDetails(errorOutput));
-        }
+            // 2. 生成完整的main.py文件
+            createMainPythonFile(tempDir, pythonCode);
 
-        // 检测运行时错误
-        if (containsRuntimeError(lowerErrorOutput)) {
-            return ExecutionFailureException.runtimeError("代码运行时错误 - " + extractErrorDetails(errorOutput));
-        }
+            log.info("启动Python进程执行代码...");
 
-        // 检测进程相关错误
-        if (containsProcessError(lowerErrorOutput, exitCode)) {
-            return ExecutionFailureException
-                    .processError("进程执行异常，退出码: " + exitCode + " - " + extractErrorDetails(errorOutput));
-        }
+            // 3. 启动Python进程
+            pythonProcess = startPythonProcess(tempDir);
 
-        // 默认为运行时错误
-        return ExecutionFailureException.runtimeError("退出码: " + exitCode + " - " + extractErrorDetails(errorOutput));
-    }
+            // 4. 处理Python进程的输入输出
+            handlePythonExecution(pythonProcess, userId);
 
-    /**
-     * 分析通用异常
-     */
-    private RuntimeException analyzeGenericException(Exception e, String pythonCode) {
-        String errorMessage = e.getMessage() != null ? e.getMessage().toLowerCase() : "";
-
-        // 检测超时相关异常
-        if (e.getClass().getSimpleName().contains("Timeout") || errorMessage.contains("timeout")) {
-            return ExecutionFailureException.timeoutError(e.getMessage());
-        }
-
-        // 检测IO相关异常
-        if (e instanceof IOException) {
-            return ExecutionFailureException.processError("IO异常 - " + e.getMessage());
-        }
-
-        // 检测中断异常
-        if (e instanceof InterruptedException) {
-            return ExecutionFailureException.processError("执行被中断 - " + e.getMessage());
-        }
-
-        // 默认为运行时错误
-        return ExecutionFailureException.runtimeError(e.getMessage());
-    }
-
-    /**
-     * 检测是否为数据访问相关错误
-     */
-    private boolean containsDataAccessError(String errorOutput) {
-        return errorOutput.contains("indexerror") ||
-                errorOutput.contains("index out of range") ||
-                errorOutput.contains("list index out of range") ||
-                errorOutput.contains("keyerror") ||
-                errorOutput.contains("empty") ||
-                errorOutput.contains("no data") ||
-                errorOutput.contains("查无数据") ||
-                errorOutput.contains("数据为空") ||
-                errorOutput.contains("结果集为空");
-    }
-
-    /**
-     * 创建数据访问异常
-     */
-    private DataAccessException createDataAccessException(String errorOutput) {
-        String lowerErrorOutput = errorOutput.toLowerCase();
-
-        if (lowerErrorOutput.contains("indexerror") ||
-                lowerErrorOutput.contains("index out of range") ||
-                lowerErrorOutput.contains("list index out of range")) {
-            return DataAccessException.arrayIndexOutOfBounds("访问数组索引超出范围 - " + extractErrorDetails(errorOutput));
-        }
-
-        if (lowerErrorOutput.contains("empty") ||
-                lowerErrorOutput.contains("no data") ||
-                lowerErrorOutput.contains("查无数据") ||
-                lowerErrorOutput.contains("数据为空")) {
-            return DataAccessException.emptyQueryResult("查询结果为空 - " + extractErrorDetails(errorOutput));
-        }
-
-        return DataAccessException.noDataAvailable("数据不可用 - " + extractErrorDetails(errorOutput));
-    }
-
-    /**
-     * 检测是否为语法错误
-     */
-    private boolean containsSyntaxError(String errorOutput) {
-        return errorOutput.contains("syntaxerror") ||
-                errorOutput.contains("invalid syntax") ||
-                errorOutput.contains("indentationerror") ||
-                errorOutput.contains("tabserror");
-    }
-
-    /**
-     * 检测是否为运行时错误
-     */
-    private boolean containsRuntimeError(String errorOutput) {
-        return errorOutput.contains("nameerror") ||
-                errorOutput.contains("typeerror") ||
-                errorOutput.contains("valueerror") ||
-                errorOutput.contains("attributeerror") ||
-                errorOutput.contains("zerodivisionerror") ||
-                errorOutput.contains("runtimeerror");
-    }
-
-    /**
-     * 检测是否为进程相关错误
-     */
-    private boolean containsProcessError(String errorOutput, int exitCode) {
-        return exitCode == 1 ||
-                errorOutput.contains("permission denied") ||
-                errorOutput.contains("access denied") ||
-                errorOutput.contains("command not found") ||
-                errorOutput.contains("no such file");
-    }
-
-    /**
-     * 提取错误详细信息
-     */
-    private String extractErrorDetails(String errorOutput) {
-        if (errorOutput == null || errorOutput.trim().isEmpty()) {
-            return "无详细错误信息";
-        }
-
-        // 提取最后几行错误信息，限制长度
-        String[] lines = errorOutput.split("\n");
-        StringBuilder details = new StringBuilder();
-        int startIndex = Math.max(0, lines.length - 3);
-
-        for (int i = startIndex; i < lines.length; i++) {
-            String line = lines[i].trim();
-            if (!line.isEmpty()) {
-                details.append(line).append(" ");
+            // 5. 等待执行完成
+            boolean finished = pythonProcess.waitFor(300, TimeUnit.SECONDS);
+            if (!finished) {
+                throw new RuntimeException("Python代码执行超时（300秒）");
             }
-        }
 
-        String result = details.toString().trim();
-        return result.length() > 200 ? result.substring(0, 200) + "..." : result;
+            int exitCode = pythonProcess.exitValue();
+            if (exitCode != 0) {
+                throw analyzeAndCreateException(exitCode, pythonErrorOutput, pythonCode);
+            }
+
+            // 6. 获取执行结果
+            String result = bufferUtil.getField(userId, "execution_result");
+            log.info("Python代码执行完成，结果: {}", result != null ? result.length() : 0);
+
+            return result;
+
+        } catch (Exception e) {
+            log.error("Python代码执行失败", e);
+            throw new RuntimeException("Python代码执行失败: " + e.getMessage(), e);
+        } finally {
+            // 清理资源
+            if (pythonProcess != null && pythonProcess.isAlive()) {
+                pythonProcess.destroyForcibly();
+            }
+            cleanupTempDirectory(tempDir);
+        }
+    }
+
+    @Override
+    public PythonExecutionResult executePythonCodeWithResult(Long messageId, Long dbConfigId) {
+        log.info("🔍 [Python执行] 开始执行Python代码, messageId: {}, dbConfigId: {}", messageId, dbConfigId);
+        
+        // 验证dbConfigId是否有效
+        if (dbConfigId == null) {
+            log.error("🔍 [Python执行] dbConfigId为null, messageId: {}", messageId);
+            return PythonExecutionResult.failure("数据库配置ID为空", "INVALID_DB_CONFIG");
+        }
+        
+        Path tempDir = null;
+        Process pythonProcess = null;
+        pythonErrorOutput = "";
+
+        try {
+            // 1. 获取消息和Python代码
+            ChatMessage message = messageMapper.selectById(messageId);
+            if (message == null) {
+                log.error("🔍 [Python执行] 未找到消息, messageId: {}", messageId);
+                return PythonExecutionResult.failure("未找到消息", "MESSAGE_NOT_FOUND");
+            }
+
+            String pythonCode = message.getPythonCode();
+            if (pythonCode == null || pythonCode.trim().isEmpty()) {
+                log.error("🔍 [Python执行] Python代码为空, messageId: {}", messageId);
+                return PythonExecutionResult.failure("Python代码为空", "EMPTY_CODE");
+            }
+
+            // 2. 创建临时执行环境
+            HashMap<String, Object> paramMap = new HashMap<>();
+            paramMap.put("dbConfigId", dbConfigId);
+            paramMap.put("messageId", messageId);
+            
+            // 将dbConfigId存储到缓冲区，供后续使用
+            bufferUtil.setField(messageId.toString(), "dbConfigId", dbConfigId.toString());
+            
+            tempDir = createPythonEnvironment(paramMap);
+
+            // 3. 生成完整的main.py文件
+            createMainPythonFile(tempDir, pythonCode);
+
+            log.info("🔍 [Python执行] 启动Python进程执行代码");
+
+            // 4. 启动Python进程
+            pythonProcess = startPythonProcess(tempDir);
+
+            // 5. 处理Python进程的输入输出
+            handlePythonExecution(pythonProcess, messageId.toString());
+
+            // 6. 等待执行完成
+            boolean finished = pythonProcess.waitFor(300, TimeUnit.SECONDS);
+            if (!finished) {
+                log.error("🔍 [Python执行] Python代码执行超时（300秒）");
+                return PythonExecutionResult.failure("Python代码执行超时（300秒）", "TIMEOUT");
+            }
+
+            int exitCode = pythonProcess.exitValue();
+            log.info("🔍 [Python执行] Python进程执行完成, 退出码: {}", exitCode);
+            
+            if (exitCode != 0) {
+                // 根据错误输出和退出码分析异常类型
+                Exception analysedException = analyzeAndCreateException(exitCode, pythonErrorOutput, pythonCode);
+                log.error("🔍 [Python执行] Python进程退出码非零: {}, 异常: {}", exitCode, analysedException.getMessage());
+                return PythonExecutionResult.failure("Python代码执行失败: " + analysedException.getMessage(), "EXECUTION_ERROR");
+            }
+
+            // 7. 获取执行结果
+            String result = bufferUtil.getField(messageId.toString(), "execution_result");
+            log.info("🔍 [Python执行] Python代码执行完成, 结果长度: {}", result != null ? result.length() : 0);
+
+            return PythonExecutionResult.success(result);
+
+        } catch (Exception e) {
+            log.error("🔍 [Python执行] Python代码执行异常: {}", e.getMessage(), e);
+            return PythonExecutionResult.failure("Python代码执行异常: " + e.getMessage(), "EXCEPTION");
+        } finally {
+            // 清理资源
+            if (pythonProcess != null && pythonProcess.isAlive()) {
+                pythonProcess.destroyForcibly();
+            }
+            cleanupTempDirectory(tempDir);
+        }
     }
 
     /**
@@ -347,69 +270,6 @@ public class PythonDirectExecutorService implements com.mt.agent.workflow.api.se
 
         log.info("Python执行环境创建完成: {}", tempDir);
         return tempDir;
-    }
-    
-    /**
-     * 创建数据库连接配置文件
-     */
-    private void createDatabaseConfig(Path tempDir, Long dbConfigId) throws IOException {
-        try {
-            // 获取数据库配置
-            DbConfig dbConfig = dbConfigService.getDbConfig(dbConfigId);
-            if (dbConfig == null) {
-                log.error("未找到数据库配置: dbConfigId={}", dbConfigId);
-                throw new IllegalArgumentException("数据库配置不存在: " + dbConfigId);
-            }
-            
-            // 创建数据库连接Python代码
-            String dbConnCode = """
-                import pymysql
-                import json
-                
-                # 数据库连接配置
-                DB_CONFIG = {
-                    'host': '%s',
-                    'port': %d,
-                    'user': '%s',
-                    'password': '%s',
-                    'database': '%s',
-                    'charset': 'utf8mb4'
-                }
-                
-                def get_db_connection():
-                    '''获取数据库连接'''
-                    return pymysql.connect(**DB_CONFIG)
-                
-                def execute_query(sql):
-                    '''执行查询并返回结果'''
-                    conn = None
-                    cursor = None
-                    try:
-                        conn = get_db_connection()
-                        cursor = conn.cursor(pymysql.cursors.DictCursor)
-                        cursor.execute(sql)
-                        results = cursor.fetchall()
-                        return results
-                    finally:
-                        if cursor:
-                            cursor.close()
-                        if conn:
-                            conn.close()
-                """.formatted(
-                    dbConfig.getHost(),
-                    dbConfig.getPort(),
-                    dbConfig.getUsername(),
-                    dbConfig.getPasswordPlain(), // 需要解密密码
-                    dbConfig.getDatabaseName()
-                );
-            
-            Files.writeString(tempDir.resolve("db_connection.py"), dbConnCode, StandardCharsets.UTF_8);
-            log.info("数据库连接配置创建成功: dbConfigId={}", dbConfigId);
-            
-        } catch (Exception e) {
-            log.error("创建数据库连接配置失败: {}", e.getMessage(), e);
-            throw new IOException("创建数据库连接配置失败", e);
-        }
     }
 
     /**
@@ -487,71 +347,171 @@ public class PythonDirectExecutorService implements com.mt.agent.workflow.api.se
                 from java_bridge import bridge
                 from typing import List, Dict, Any
 
-                # SQL生成函数
-                def gen_sql(query_text: str, table_name: str) -> str:
-                    '''基于文本描述的查询条件，生成sql代码'''
-                    return bridge.call_java_function('gen_sql', query_text, table_name)
+                def gen_sql(query, table_name=None):
+                    '''生成SQL查询
+                    Args:
+                        query: 查询文本
+                        table_name: 表名（可选）
+                    '''
+                    if table_name:
+                        return bridge.call_java_function('gen_sql', query, table_name)
+                    else:
+                        return bridge.call_java_function('gen_sql', query)
                 
-                def exec_sql(sql_code: str) -> List[Dict[str, Any]]:
-                    '''输入可执行的SQL代码，返回SQL查询结果'''
-                    return bridge.call_java_function('exec_sql', sql_code)
-
-                def steps_summary(summary_title: str) -> str:
-                    '''总结执行情况：自动获取行动计划的执行情况，输出总结文本'''
-                    return bridge.call_java_function('steps_summary', summary_title)
-
-                # 可视化函数
-                def vis_textbox(content: str) -> None:
-                    '''输入文本内容，在前端对话界面渲染1个文本框'''
-                    bridge.call_java_function('vis_textbox', content)
-
-                def vis_textblock(title: str, value: float) -> None:
-                    '''输入标题和数值，在前端对话界面渲染1个指标信息块'''
-                    bridge.call_java_function('vis_textblock', title, value)
-
-                def vis_single_bar(title: str, x_labels: List[str], y_data: List[float]) -> None:
-                    '''输入标题、X轴标签列表和Y轴数据列表，在前端对话界面渲染1个单柱状图'''
-                    bridge.call_java_function('vis_single_bar', title, x_labels, y_data)
-
-                def vis_clustered_bar(title: str, x_labels: List[str], bar_a_label: str, bar_b_label: str,
-                                    group_a: List[float], group_b: List[float]) -> None:
-                    '''输入标题、X轴标签列表，a、b两组数据的标签和数据，在前端对话界面渲染1个二分组柱状图'''
-                    bridge.call_java_function('vis_clustered_bar', title, x_labels, bar_a_label, bar_b_label, group_a, group_b)
-
-                def vis_pie_chart(title: str, labels: List[str], data: List[float]) -> None:
-                    '''输入标题、标签列表和数据列表，在前端对话界面渲染1个饼状图'''
-                    bridge.call_java_function('vis_pie_chart', title, labels, data)
-
-                def vis_table(title: str, data: List[Dict[str, Any]]) -> None:
-                    '''输入表格标题和表格数据，在前端对话界面渲染1个二维表格'''
-                    bridge.call_java_function('vis_table', title, data)
+                def exec_sql(query):
+                    '''执行SQL查询'''
+                    return bridge.call_java_function('exec_sql', query)
                 """;
 
         Files.writeString(tempDir.resolve("system_functions.py"), systemFunctionsCode, StandardCharsets.UTF_8);
     }
 
     /**
-     * 生成主执行文件
+     * 生成主执行文件（新的灵活执行方式）
      */
     private void createMainPythonFile(Path tempDir, String userPythonCode) throws IOException {
+        // 分析代码结构，决定使用哪种执行策略
+        CodeStructure structure = analyzeCodeStructure(userPythonCode);
+
+        if (structure.requiresFlexibleExecution()) {
+            // 使用新的灵活执行方式
+            createFlexiblePythonFile(tempDir, userPythonCode, structure);
+        } else {
+            // 使用原有的函数调用方式（向后兼容）
+            createLegacyPythonFile(tempDir, userPythonCode);
+        }
+    }
+
+    /**
+     * 创建灵活的Python执行文件（方案三实现）
+     */
+    private void createFlexiblePythonFile(Path tempDir, String userPythonCode, CodeStructure structure) throws IOException {
+        // 转义用户代码中的三引号
+        String escapedUserCode = escapeUserCode(userPythonCode);
+
+        String flexibleTemplate = """
+                # -*- coding: utf-8 -*-
+                import json
+                import sys
+                import traceback
+                import types
+                from java_bridge import bridge, report
+                from system_functions import *
+                
+                def execute_dynamic_code():
+                    try:
+                        bridge.report_step("开始动态执行Python代码\\n")
+                
+                        # 加载参数到全局命名空间
+                        with open('params.json', 'r', encoding='utf-8') as f:
+                            params = json.load(f)
+                
+                        # 创建安全的执行命名空间
+                        exec_namespace = create_execution_namespace()
+        
+                        # 安全更新参数，确保params不为None
+                        if params is not None:
+                            exec_namespace.update(params)
+                        else:
+                            print("警告: params.json中的参数为None，跳过参数更新")
+                
+                        # 用户代码
+                        user_code = '''%s'''
+                
+                        bridge.report_step("正在执行用户定义的代码\\n")
+                
+                        # 动态执行用户代码
+                        exec(user_code, exec_namespace)
+                
+                        # 执行后处理逻辑
+                        post_execution_handler(exec_namespace)
+                
+                        bridge.report_step("Python代码执行完成\\n")
+                
+                    except Exception as e:
+                        bridge.report_step(f"执行失败: {str(e)}\\n")
+                        traceback.print_exc()
+                        sys.exit(1)
+                
+                def create_execution_namespace():
+                    '''创建安全的执行命名空间'''
+                    return {
+                        '__name__': '__main__',
+                        '__builtins__': __builtins__,
+                        'bridge': bridge,
+                        'report': report,
+                        'gen_sql': gen_sql,
+                        'exec_sql': exec_sql,
+                        # 添加常用的Python内置模块
+                        'json': json,
+                        'sys': sys,
+                        'traceback': traceback,
+                        'types': types
+                    }
+                
+                def post_execution_handler(namespace):
+                    '''执行后处理逻辑'''
+                    try:
+                        # 1. 检查是否有main函数并调用
+                        if 'main' in namespace and callable(namespace['main']):
+                            bridge.report_step("检测到main函数，正在调用\\n")
+                            namespace['main']()
+                            return
+                
+                        # 2. 检查是否有其他需要调用的函数
+                        function_calls = detect_uncalled_functions(namespace)
+                        if function_calls:
+                            bridge.report_step(f"检测到未调用的函数，正在执行: {function_calls}\\n")
+                            for func_name in function_calls:
+                                if func_name in namespace and callable(namespace[func_name]):
+                                    try:
+                                        namespace[func_name]()
+                                    except Exception as e:
+                                        bridge.report_step(f"调用函数{func_name}时出错: {str(e)}\\n")
+                
+                    except Exception as e:
+                        bridge.report_step(f"后处理阶段出错: {str(e)}\\n")
+                        traceback.print_exc()
+                
+                def detect_uncalled_functions(namespace):
+                    '''检测命名空间中未被调用的用户定义函数'''
+                    user_functions = []
+                    for name, obj in namespace.items():
+                        if (callable(obj) and 
+                            hasattr(obj, '__module__') and 
+                            obj.__module__ == '__main__' and
+                            not name.startswith('_') and
+                            name not in ['main']):  # 排除main函数，它已经被特殊处理
+                            user_functions.append(name)
+                    return user_functions
+                
+                if __name__ == "__main__":
+                    execute_dynamic_code()
+                """;
+
+        String finalCode = String.format(flexibleTemplate, escapedUserCode);
+        log.info("灵活执行代码：" + finalCode);
+
+        Files.writeString(tempDir.resolve("main.py"), finalCode, StandardCharsets.UTF_8);
+    }
+
+    /**
+     * 创建传统的Python执行文件（向后兼容）
+     */
+    private void createLegacyPythonFile(Path tempDir, String userPythonCode) throws IOException {
         // 预处理用户代码，确保正确的缩进
         String processedUserCode = preprocessUserCode(userPythonCode);
 
         // 检测是否需要自动调用函数
         String functionCall = detectAndGenerateFunctionCall(userPythonCode);
 
-        String mainCode = """
+        String mainCode1 = """
                 # -*- coding: utf-8 -*-
                 import json
                 import sys
                 import traceback
-                import os
                 from java_bridge import bridge, report
                 from system_functions import *
-                
-                # 如果存在数据库连接配置，导入它
-                if os.path.exists('db_connection.py'):
-                    from db_connection import execute_query, get_db_connection
 
                 def main():
                     try:
@@ -562,7 +522,9 @@ public class PythonDirectExecutorService implements com.mt.agent.workflow.api.se
                         globals().update(params)
 
                         # 执行用户代码
-                """ + processedUserCode + """
+                """;
+        String mainCode2 = """
+                
                         # 自动调用检测到的函数
                 """ + functionCall + """
                         bridge.report_step("Python代码执行完成\\n")
@@ -571,15 +533,17 @@ public class PythonDirectExecutorService implements com.mt.agent.workflow.api.se
                         sys.exit(1)
 
                 if __name__ == "__main__":
-                    main()
+                    main();
                 """;
+        String mainCode = mainCode1 + processedUserCode + mainCode2;
+        log.info("传统执行代码：" + mainCode);
 
-        log.info("生成的Python代码：\n{}", mainCode);
         Files.writeString(tempDir.resolve("main.py"), mainCode, StandardCharsets.UTF_8);
     }
 
     /**
      * 检测用户代码中的函数定义并生成相应的函数调用
+     * 改进版本：避免重复调用已经被调用的函数
      */
     private String detectAndGenerateFunctionCall(String userPythonCode) {
         if (userPythonCode == null || userPythonCode.trim().isEmpty()) {
@@ -632,6 +596,8 @@ public class PythonDirectExecutorService implements com.mt.agent.workflow.api.se
                 // 添加函数调用，使用正确的缩进（8个空格，匹配main() -> try内的缩进级别）
                 functionCalls.append("        ").append(functionName).append("()\n");
                 log.info("🚀 [函数调用] 为未调用的函数生成自动调用: {}()", functionName);
+            } else {
+                log.info("⚠️ [函数调用] 函数已被调用，跳过自动调用: {}", functionName);
             }
         }
 
@@ -648,25 +614,33 @@ public class PythonDirectExecutorService implements com.mt.agent.workflow.api.se
 
         // 精确匹配函数调用模式：函数名后跟(
         String functionCallPattern = functionName + "(";
+        return line.contains(functionCallPattern) && !isInString(line, functionCallPattern);
+    }
 
-        // 检查行中是否包含函数调用模式
-        if (line.contains(functionCallPattern)) {
-            // 进一步验证，确保不是字符串中的内容或其他误判
-            int index = line.indexOf(functionCallPattern);
-            if (index > 0) {
-                char prevChar = line.charAt(index - 1);
-                // 函数调用前应该是空格、制表符、=、(、,、[、{等
-                if (!Character.isWhitespace(prevChar) &&
-                        prevChar != '=' && prevChar != '(' && prevChar != ',' &&
-                        prevChar != '[' && prevChar != '{' && prevChar != '\n' &&
-                        prevChar != '\t') {
+    /**
+     * 简单检查字符串是否在引号中
+     */
+    private boolean isInString(String line, String target) {
+        int targetIndex = line.indexOf(target);
+        if (targetIndex == -1) {
                     return false;
                 }
+
+        // 计算目标字符串前面的引号数量
+        int singleQuoteCount = 0;
+        int doubleQuoteCount = 0;
+
+        for (int i = 0; i < targetIndex; i++) {
+            char c = line.charAt(i);
+            if (c == '\'' && (i == 0 || line.charAt(i - 1) != '\\')) {
+                singleQuoteCount++;
+            } else if (c == '"' && (i == 0 || line.charAt(i - 1) != '\\')) {
+                doubleQuoteCount++;
             }
-            return true;
         }
 
-        return false;
+        // 如果引号数量为奇数，说明在字符串中
+        return (singleQuoteCount % 2 == 1) || (doubleQuoteCount % 2 == 1);
     }
 
     /**
@@ -754,7 +728,7 @@ public class PythonDirectExecutorService implements com.mt.agent.workflow.api.se
      * 启动Python进程
      */
     private Process startPythonProcess(Path tempDir) throws IOException {
-        ProcessBuilder processBuilder = new ProcessBuilder(pythonExecutablePath, "main.py");
+        ProcessBuilder processBuilder = new ProcessBuilder("python", "main.py");
         processBuilder.directory(tempDir.toFile());
         processBuilder.redirectErrorStream(true);
 
@@ -768,23 +742,19 @@ public class PythonDirectExecutorService implements com.mt.agent.workflow.api.se
     /**
      * 处理Python进程执行
      */
-    private void handlePythonExecution(Process pythonProcess, SubEventReporter reporter, String userId) {
+    private void handlePythonExecution(Process pythonProcess, String userId) {
         // 获取Python进程的输入输出流，明确指定UTF-8编码
         BufferedReader reader = new BufferedReader(
                 new InputStreamReader(pythonProcess.getInputStream(), StandardCharsets.UTF_8));
         PrintWriter writer = new PrintWriter(
                 new OutputStreamWriter(pythonProcess.getOutputStream(), StandardCharsets.UTF_8), true);
 
-        // 用于收集执行结果
-        StringBuilder resultCollector = new StringBuilder();
-
         // 启动输出处理线程
         CompletableFuture<Void> outputHandler = CompletableFuture.runAsync(() -> {
             try {
                 String line;
                 while ((line = reader.readLine()) != null) {
-                    log.info("Python输出: {}", line);
-                    handlePythonOutput(line, writer, reporter, userId, resultCollector);
+                    handlePythonOutput(line, writer, userId);
                 }
             } catch (IOException e) {
                 log.error("处理Python输出时发生错误", e);
@@ -800,12 +770,7 @@ public class PythonDirectExecutorService implements com.mt.agent.workflow.api.se
 
         // 等待输出处理完成
         try {
-            outputHandler.get(executionTimeoutSeconds, TimeUnit.SECONDS);
-            
-            // 保存执行结果
-            if (resultCollector.length() > 0) {
-                bufferUtil.setField(userId, "executionResult", resultCollector.toString());
-            }
+            outputHandler.get(300, TimeUnit.SECONDS);
         } catch (Exception e) {
             log.error("Python输出处理超时或失败", e);
         }
@@ -814,18 +779,12 @@ public class PythonDirectExecutorService implements com.mt.agent.workflow.api.se
     /**
      * 处理Python输出
      */
-    private void handlePythonOutput(String line, PrintWriter writer, SubEventReporter reporter, 
-                                   String userId, StringBuilder resultCollector) {
+    private void handlePythonOutput(String line, PrintWriter writer, String userId) {
         try {
             if (line.startsWith("JAVA_REQUEST:")) {
                 // 处理Java函数调用请求
-                handleJavaFunctionCall(line.substring(13), writer, reporter, userId);
+                handleJavaFunctionCall(line.substring(13), writer, userId);
             } else {
-                // 收集查询结果
-                if (line.contains("\"dataType\"") && line.contains("\"parsedData\"")) {
-                    resultCollector.append(line);
-                }
-                
                 // 检测是否为错误输出
                 if (isErrorOutput(line)) {
                     pythonErrorOutput += line + "\n";
@@ -852,14 +811,17 @@ public class PythonDirectExecutorService implements com.mt.agent.workflow.api.se
                 lowerLine.contains("exception") ||
                 lowerLine.contains("traceback") ||
                 lowerLine.contains("failed") ||
+                lowerLine.contains("invalid") ||
                 line.trim().startsWith("File \"") ||
-                line.trim().matches("\\s*\\^.*");
+                line.trim().matches("\\s*\\^.*") || // 指向错误位置的箭头
+                lowerLine.contains("syntax") ||
+                lowerLine.contains("indent");
     }
 
     /**
      * 处理Java函数调用
      */
-    private void handleJavaFunctionCall(String requestJson, PrintWriter writer, SubEventReporter reporter,
+    private void handleJavaFunctionCall(String requestJson, PrintWriter writer,
                                        String userId) {
         try {
             Map<String, Object> request = objectMapper.readValue(requestJson, Map.class);
@@ -868,7 +830,7 @@ public class PythonDirectExecutorService implements com.mt.agent.workflow.api.se
             Integer requestId = (Integer) request.get("id");
 
             // 调用对应的Java函数
-            Object result = callJavaFunction(functionName, args, reporter, userId);
+            Object result = callJavaFunction(functionName, args, userId);
 
             // 返回结果给Python
             Map<String, Object> response = Map.of(
@@ -881,13 +843,9 @@ public class PythonDirectExecutorService implements com.mt.agent.workflow.api.se
             writer.println("JAVA_RESPONSE:" + responseJson);
             writer.flush();
 
-        } catch (DataAccessException e) {
-            log.error("Java函数调用发生数据访问异常: {}", e.getMessage(), e);
-            Integer requestId = extractRequestIdSafely(requestJson);
-            sendErrorResponse(writer, e.getMessage(), requestId);
-            pythonErrorOutput += "Java函数调用异常: " + e.getMessage() + "\n";
         } catch (Exception e) {
             log.error("处理Java函数调用失败", e);
+            // 发送错误响应
             Integer requestId = extractRequestIdSafely(requestJson);
             sendErrorResponse(writer, e.getMessage(), requestId);
             pythonErrorOutput += "Java函数调用异常: " + e.getMessage() + "\n";
@@ -926,103 +884,319 @@ public class PythonDirectExecutorService implements com.mt.agent.workflow.api.se
     /**
      * 调用对应的Java函数
      */
-    private Object callJavaFunction(String functionName, List<Object> args, SubEventReporter reporter, String userId) {
+    private Object callJavaFunction(String functionName, List<Object> args, String userId) {
         switch (functionName) {
             case "report_step":
-                reporter.reportStep((String) args.get(0));
+                log.info("报告步骤: {}", args.get(0));
                 return null;
 
             case "report_progress":
-                reporter.reportStep((String) args.get(0));
+                log.info("报告进度: {}", args.get(0));
                 return null;
 
             case "gen_sql":
-                // 简单的SQL生成，实际应该调用AI服务
-                String queryText = (String) args.get(0);
-                String tableName = (String) args.get(1);
-                return generateSimpleSql(queryText, tableName);
+                return genSQL(args, userId);
 
             case "exec_sql":
-                Object execResult = functionUtil.executeSQL((String) args.get(0), userId);
-                // 检测SQL执行结果是否为空
-                if (execResult == null) {
-                    throw DataAccessException.emptyQueryResult("SQL查询返回null结果");
-                }
-                if (execResult instanceof List) {
-                    List<?> resultList = (List<?>) execResult;
-                    log.info("SQL执行返回 {} 条记录", resultList.size());
-                }
-                return execResult;
-
-            case "steps_summary":
-                return functionUtil.stepSummary((String) args.get(0));
-
-            case "vis_textbox":
-                functionUtil.visTextBox((String) args.get(0), reporter);
-                return null;
-
-            case "vis_textblock":
-                Object valueArg = args.get(1);
-                if (valueArg instanceof Number) {
-                    functionUtil.visTextBlock((String) args.get(0), ((Number) valueArg).doubleValue(), reporter);
-                } else {
-                    String valueStr = valueArg.toString();
-                    try {
-                        double numValue = Double.parseDouble(valueStr);
-                        functionUtil.visTextBlock((String) args.get(0), numValue, reporter);
-                    } catch (NumberFormatException e) {
-                        functionUtil.visTextBox((String) args.get(0) + ": " + valueStr, reporter);
-                    }
-                }
-                return null;
-
-            case "vis_single_bar":
-                List<String> xLabels = (List<String>) args.get(1);
-                List<Double> yData = convertToDoubleList(args.get(2));
-                functionUtil.visSingleBar((String) args.get(0), xLabels, yData, reporter);
-                return null;
-
-            case "vis_clustered_bar":
-                List<String> clusteredXLabels = (List<String>) args.get(1);
-                List<Double> barAData = convertToDoubleList(args.get(4));
-                List<Double> barBData = convertToDoubleList(args.get(5));
-                functionUtil.visClusteredBar((String) args.get(0),
-                        clusteredXLabels,
-                        (String) args.get(2),
-                        (String) args.get(3),
-                        barAData,
-                        barBData,
-                        reporter);
-                return null;
-
-            case "vis_pie_chart":
-                List<String> pieLabels = (List<String>) args.get(1);
-                List<Double> pieData = convertToDoubleList(args.get(2));
-                functionUtil.visPieChart((String) args.get(0), pieLabels, pieData, reporter);
-                return null;
-
-            case "vis_table":
-                functionUtil.visTable((String) args.get(0),
-                        (List<Map<String, Object>>) args.get(1), reporter);
-                return null;
+                return execSQL(args, userId);
 
             default:
                 throw new IllegalArgumentException("未知的函数: " + functionName);
         }
     }
 
-    /**
-     * 生成简单的SQL（临时实现）
-     */
-    private String generateSimpleSql(String queryText, String tableName) {
-        // 简单的SQL生成逻辑，实际应该调用AI服务
-        if (queryText.toLowerCase().contains("count") || queryText.contains("数量")) {
-            return "SELECT COUNT(*) as count FROM " + tableName;
-        } else if (queryText.toLowerCase().contains("all") || queryText.contains("全部")) {
-            return "SELECT * FROM " + tableName + " LIMIT 100";
-        } else {
-            return "SELECT * FROM " + tableName + " LIMIT 50";
+    @Nullable
+    private String genSQL(List<Object> args, String userId) {
+        try {
+            // 处理1个或2个参数的情况
+            String query = (String) args.get(0);
+            String tableName = args.size() > 1 ? (String) args.get(1) : null;
+            
+            log.info("🔍 [SQL生成] 开始生成SQL: query={}, tableName={}", query, tableName);
+            
+            // 获取数据库配置ID用于获取表结构
+            Long dbConfigId = getDbConfigIdFromUserId(userId);
+            if (dbConfigId == null) {
+                log.warn("🔍 [SQL生成] 无法获取数据库配置ID，使用简单SQL生成");
+                return aiSqlQueryService.generateSimpleSQL(query, tableName);
+            }
+            
+            // 获取当前会话的上下文信息
+            String pythonCode = getPythonCodeFromUserId(userId);
+            String historyStr = getHistoryFromUserId(userId);
+            String question = getCurrentQuestionFromUserId(userId);
+            
+            // 获取表结构信息
+            String tableSchema = getTableSchemaInfo(dbConfigId, tableName);
+            
+            // 调用AI服务生成SQL
+            String generatedSQL = aiSqlQueryService.generateSQL(
+                query, tableName, pythonCode, historyStr, question, tableSchema);
+            
+            log.info("🔍 [SQL生成] AI生成SQL成功: {}", generatedSQL);
+            return generatedSQL;
+            
+        } catch (Exception e) {
+            log.error("🔍 [SQL生成] 生成SQL失败: {}", e.getMessage(), e);
+            // 降级方案：返回简单的SQL查询
+            String query = (String) args.get(0);
+            String tableName = args.size() > 1 ? (String) args.get(1) : null;
+            if (tableName != null) {
+                return String.format("SELECT * FROM %s LIMIT 10", tableName);
+            }
+            return "SELECT 1";
         }
+    }
+
+    /**
+     * 获取当前Python代码上下文
+     */
+    private String getPythonCodeFromUserId(String userId) {
+        try {
+            // 从消息记录中获取Python代码
+            ChatMessage message = messageMapper.selectById(Long.parseLong(userId));
+            if (message != null && message.getPythonCode() != null) {
+                return message.getPythonCode();
+            }
+        } catch (Exception e) {
+            log.debug("获取Python代码失败: {}", e.getMessage());
+        }
+        return "";
+    }
+
+    /**
+     * 获取历史对话信息
+     */
+    private String getHistoryFromUserId(String userId) {
+        try {
+            // 从会话中获取历史消息，这里简化处理
+            return bufferUtil.getField(userId, "history_context");
+        } catch (Exception e) {
+            log.debug("获取历史对话失败: {}", e.getMessage());
+        }
+        return "";
+    }
+
+    /**
+     * 获取当前用户问题
+     */
+    private String getCurrentQuestionFromUserId(String userId) {
+        try {
+            ChatMessage message = messageMapper.selectById(Long.parseLong(userId));
+            if (message != null && message.getContent() != null) {
+                return message.getContent();
+            }
+        } catch (Exception e) {
+            log.debug("获取当前问题失败: {}", e.getMessage());
+        }
+        return "";
+    }
+
+    /**
+     * 获取表结构信息
+     */
+    private String getTableSchemaInfo(Long dbConfigId, String tableName) {
+        try {
+            // 调用SchemaContextService获取表结构
+            return schemaContextService.getTableSchema(dbConfigId, tableName);
+        } catch (Exception e) {
+            log.warn("🔍 [SQL生成] 获取表结构失败: {}, 使用默认表结构", e.getMessage());
+            // 返回默认表结构
+            return getDefaultTableSchema(tableName);
+        }
+    }
+
+    /**
+     * 获取默认表结构
+     */
+    private String getDefaultTableSchema(String tableName) {
+        if (tableName == null || tableName.isEmpty()) {
+            tableName = "data_table";
+        }
+        return String.format("""
+            表名: %s
+            字段:
+            - id: BIGINT, 主键
+            - name: VARCHAR(100), 名称  
+            - value: DECIMAL(10,2), 数值
+            - category: VARCHAR(50), 分类
+            - created_time: DATETIME, 创建时间
+            - status: INT, 状态(1-正常,0-禁用)
+            """, tableName);
+    }
+
+    /**
+     * 执行SQL查询并返回结果
+     */
+    private Object execSQL(List<Object> args, String userId) {
+        try {
+            String sql = (String) args.get(0);
+            log.info("🔍 [SQL执行] 执行SQL查询: {}", sql);
+
+            // 从参数中获取数据库配置ID
+            Long dbConfigId = getDbConfigIdFromUserId(userId);
+            if (dbConfigId == null) {
+                log.error("🔍 [SQL执行] 无法获取数据库配置ID");
+                throw new RuntimeException("无法获取数据库配置ID");
+            }
+
+            // 使用SqlExecutionService执行SQL
+            log.info("🔍 [SQL执行] 调用SqlExecutionService执行SQL, dbConfigId: {}, sql: {}", dbConfigId, sql);
+            SqlExecutionService.SqlExecutionResult result = sqlExecutionService.executeWithResult(dbConfigId, sql);
+            log.info("🔍 [SQL执行] SqlExecutionService调用完成");
+            
+            if (result.queryResult != null && result.queryResult.rows != null) {
+                log.info("🔍 [SQL执行] SQL执行成功，返回{}行数据", result.queryResult.rows.size());
+                
+                // 将查询结果存储到缓冲区，供Python代码获取
+                String resultJson = objectMapper.writeValueAsString(result.queryResult);
+                bufferUtil.setField(userId, "execution_result", resultJson);
+                
+                return result.queryResult.rows;
+                } else {
+                log.warn("🔍 [SQL执行] SQL执行返回空结果");
+                return List.of();
+            }
+            
+        } catch (Exception e) {
+            log.error("🔍 [SQL执行] SQL执行失败: {}", e.getMessage(), e);
+            throw new RuntimeException("SQL执行失败: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * 从userId或从全局参数中获取数据库配置ID
+     */
+    private Long getDbConfigIdFromUserId(String userId) {
+        try {
+            // 尝试从缓冲区获取dbConfigId参数
+            String dbConfigIdStr = bufferUtil.getField(userId, "dbConfigId");
+            if (dbConfigIdStr != null) {
+                return Long.parseLong(dbConfigIdStr);
+            }
+
+            // 从messageId获取相关的dbConfigId，这需要从消息记录中查找
+            ChatMessage message = messageMapper.selectById(Long.parseLong(userId));
+            if (message != null && message.getSessionId() != null) {
+                // 通过sessionId获取dbConfigId
+                ChatSession session = chatSessionMapper.selectById(message.getSessionId());
+                if (session != null && session.getDbConfigId() != null) {
+                    return session.getDbConfigId();
+                }
+            }
+
+            // 默认配置：获取第一个可用的数据库配置
+            // 这里应该有更好的逻辑来确定使用哪个数据库配置
+            log.warn("🔍 [SQL执行] 未能获取特定的数据库配置ID，使用默认配置");
+            return 1L; // 使用默认的数据库配置ID
+            
+        } catch (Exception e) {
+            log.error("🔍 [SQL执行] 获取数据库配置ID失败: {}", e.getMessage(), e);
+            return null;
+        }
+    }
+
+    /**
+     * 分析Python执行异常并创建相应的异常类型
+     */
+    private RuntimeException analyzeAndCreateException(int exitCode, String errorOutput, String pythonCode) {
+        log.info("分析Python执行异常 - 退出码: {}, 错误输出: {}", exitCode, errorOutput);
+
+        String lowerErrorOutput = errorOutput.toLowerCase();
+
+        // 检测数组越界和数据访问相关异常
+        if (containsDataAccessError(lowerErrorOutput)) {
+            return new RuntimeException("数据访问错误 - " + extractErrorDetails(errorOutput));
+        }
+
+        // 检测语法错误
+        if (containsSyntaxError(lowerErrorOutput)) {
+            return new RuntimeException("代码语法错误 - " + extractErrorDetails(errorOutput));
+        }
+
+        // 检测运行时错误
+        if (containsRuntimeError(lowerErrorOutput)) {
+            return new RuntimeException("代码运行时错误 - " + extractErrorDetails(errorOutput));
+        }
+
+        // 检测进程相关错误
+        if (containsProcessError(lowerErrorOutput, exitCode)) {
+            return new RuntimeException("进程执行异常，退出码: " + exitCode + " - " + extractErrorDetails(errorOutput));
+        }
+
+        // 默认为未知错误
+        return new RuntimeException("退出码: " + exitCode + " - " + extractErrorDetails(errorOutput));
+    }
+
+    /**
+     * 检测是否为数据访问相关错误
+     */
+    private boolean containsDataAccessError(String errorOutput) {
+        return errorOutput.contains("indexerror") ||
+                errorOutput.contains("index out of range") ||
+                errorOutput.contains("list index out of range") ||
+                errorOutput.contains("keyerror") ||
+                errorOutput.contains("empty") ||
+                errorOutput.contains("no data") ||
+                errorOutput.contains("查无数据") ||
+                errorOutput.contains("数据为空");
+    }
+
+    /**
+     * 检测是否为语法错误
+     */
+    private boolean containsSyntaxError(String errorOutput) {
+        return errorOutput.contains("syntaxerror") ||
+                errorOutput.contains("invalid syntax") ||
+                errorOutput.contains("indentationerror") ||
+                errorOutput.contains("tabserror");
+    }
+
+    /**
+     * 检测是否为运行时错误
+     */
+    private boolean containsRuntimeError(String errorOutput) {
+        return errorOutput.contains("nameerror") ||
+                errorOutput.contains("typeerror") ||
+                errorOutput.contains("valueerror") ||
+                errorOutput.contains("attributeerror") ||
+                errorOutput.contains("zerodivisionerror") ||
+                errorOutput.contains("runtimeerror");
+    }
+
+    /**
+     * 检测是否为进程相关错误
+     */
+    private boolean containsProcessError(String errorOutput, int exitCode) {
+        return exitCode == 1 ||
+                errorOutput.contains("permission denied") ||
+                errorOutput.contains("access denied") ||
+                errorOutput.contains("command not found") ||
+                errorOutput.contains("no such file");
+    }
+
+    /**
+     * 提取错误详细信息
+     */
+    private String extractErrorDetails(String errorOutput) {
+        if (errorOutput == null || errorOutput.trim().isEmpty()) {
+            return "无详细错误信息";
+        }
+
+        // 提取最后几行错误信息，限制长度
+        String[] lines = errorOutput.split("\n");
+        StringBuilder details = new StringBuilder();
+        int startIndex = Math.max(0, lines.length - 3);
+
+        for (int i = startIndex; i < lines.length; i++) {
+            String line = lines[i].trim();
+            if (!line.isEmpty()) {
+                details.append(line).append(" ");
+            }
+        }
+
+        String result = details.toString().trim();
+        return result.length() > 200 ? result.substring(0, 200) + "..." : result;
     }
 
     /**
@@ -1047,74 +1221,155 @@ public class PythonDirectExecutorService implements com.mt.agent.workflow.api.se
     }
 
     /**
-     * 安全地将Object转换为List<Double>
+     * 代码结构分析类
      */
-    private List<Double> convertToDoubleList(Object obj) {
-        if (obj == null) {
-            return new ArrayList<>();
+    private static class CodeStructure {
+        public boolean hasMainFunction = false;
+        public boolean hasTopLevelCode = false;
+        public boolean hasClassDefinitions = false;
+        public boolean hasComplexStructure = false;
+        public List<String> functionNames = new ArrayList<>();
+        public List<String> imports = new ArrayList<>();
+
+        /**
+         * 判断是否需要使用灵活执行模式
+         */
+        public boolean requiresFlexibleExecution() {
+            return hasMainFunction || hasTopLevelCode || hasClassDefinitions || hasComplexStructure;
         }
 
-        if (!(obj instanceof List)) {
-            log.warn("⚠️ [类型转换] 期望List类型，实际类型: {}", obj.getClass().getSimpleName());
-            return new ArrayList<>();
+        @Override
+        public String toString() {
+            return String.format("CodeStructure{main=%s, topLevel=%s, classes=%s, complex=%s, functions=%s}",
+                    hasMainFunction, hasTopLevelCode, hasClassDefinitions, hasComplexStructure, functionNames);
         }
-
-        List<?> sourceList = (List<?>) obj;
-        List<Double> result = new ArrayList<>();
-
-        for (Object item : sourceList) {
-            if (item == null) {
-                result.add(0.0);
-                continue;
-            }
-
-            try {
-                if (item instanceof Number) {
-                    result.add(((Number) item).doubleValue());
-                } else if (item instanceof String) {
-                    result.add(Double.parseDouble((String) item));
-                } else {
-                    result.add(Double.parseDouble(item.toString()));
-                }
-            } catch (NumberFormatException e) {
-                log.warn("⚠️ [类型转换] 无法将 '{}' 转换为Double，使用默认值0.0", item);
-                result.add(0.0);
-            }
-        }
-
-        return result;
     }
 
     /**
-     * 更新执行结果到数据库
+     * 分析代码结构
      */
-    private void updateExecutionResult(ChatMessage chatMessage, String result, boolean success) {
-        try {
-            chatMessage.setExecutionResult(result);
-            chatMessage.setExecutionStatus(success ? 1 : 2);
-            chatMessage.setStatus(success ? 1 : 2);
-            if (!success) {
-                chatMessage.setErrorMessage(result);
-            }
-            
-            chatMessageMapper.updateById(chatMessage);
-            log.info("执行结果已更新到数据库, messageId: {}, success: {}", chatMessage.getId(), success);
-        } catch (Exception e) {
-            log.error("更新执行结果到数据库失败, messageId: {}", chatMessage.getId(), e);
+    private CodeStructure analyzeCodeStructure(String userPythonCode) {
+        CodeStructure structure = new CodeStructure();
+
+        if (userPythonCode == null || userPythonCode.trim().isEmpty()) {
+            return structure;
         }
-    }
-    
-    // 实现PythonExecutorService接口的其他方法
-    @Override
-    public void executePythonCode(String pythonCode, HashMap<String, Object> paramMap,
-                                 SubEventReporter reporter, String userId) {
-        // 这个方法已废弃，调用新的实现
-        throw new UnsupportedOperationException("This method is deprecated. Use executePythonCodeWithResult instead.");
+
+        String[] lines = userPythonCode.split("\n");
+        boolean inMultilineString = false;
+        String multilineStringDelimiter = null;
+
+        for (String line : lines) {
+            String trimmed = line.trim();
+
+            // 跳过空行
+            if (trimmed.isEmpty()) {
+                continue;
+            }
+
+            // 处理多行字符串
+            if (inMultilineString) {
+                if (trimmed.contains(multilineStringDelimiter)) {
+                    inMultilineString = false;
+                    multilineStringDelimiter = null;
+                }
+                continue;
+            }
+
+            // 检测多行字符串开始
+            if (trimmed.contains("\"\"\"") || trimmed.contains("'''")) {
+                if (trimmed.contains("\"\"\"")) {
+                    multilineStringDelimiter = "\"\"\"";
+                } else {
+                    multilineStringDelimiter = "'''";
+                }
+                // 检查是否在同一行结束
+                if (trimmed.indexOf(multilineStringDelimiter) != trimmed.lastIndexOf(multilineStringDelimiter)) {
+                    continue;
+                } else {
+                    inMultilineString = true;
+                    continue;
+                }
+            }
+
+            // 跳过注释行
+            if (trimmed.startsWith("#")) {
+                continue;
+            }
+
+            // 检测导入语句
+            if (trimmed.startsWith("import ") || trimmed.startsWith("from ")) {
+                structure.imports.add(trimmed);
+                continue;
+            }
+
+            // 检测函数定义
+            if (trimmed.startsWith("def ")) {
+                String functionName = extractFunctionName(trimmed);
+                if (functionName != null) {
+                    structure.functionNames.add(functionName);
+                    if ("main".equals(functionName)) {
+                        structure.hasMainFunction = true;
+                        log.info("🔍 [代码分析] 检测到main函数");
+                    }
+                }
+
+                // 检测复杂结构
+                if (trimmed.contains("@") || trimmed.contains("async ") || trimmed.contains("yield")) {
+                    structure.hasComplexStructure = true;
+                }
+                continue;
+            }
+
+            // 检测类定义
+            if (trimmed.startsWith("class ")) {
+                structure.hasClassDefinitions = true;
+                log.info("🔍 [代码分析] 检测到类定义");
+                continue;
+            }
+
+            // 检测装饰器
+            if (trimmed.startsWith("@")) {
+                structure.hasComplexStructure = true;
+                continue;
+            }
+
+            // 检测其他复杂结构
+            if (trimmed.contains("async ") || trimmed.contains("await ") ||
+                    trimmed.contains("yield ") || trimmed.contains("lambda ")) {
+                structure.hasComplexStructure = true;
+            }
+
+            // 检测顶级执行代码（不是函数或类定义的代码）
+            if (!trimmed.startsWith("def ") && !trimmed.startsWith("class ") &&
+                    !trimmed.startsWith("@") && !isVariableAssignment(trimmed)) {
+                structure.hasTopLevelCode = true;
+                log.info("🔍 [代码分析] 检测到顶级执行代码: {}", trimmed.length() > 50 ? trimmed.substring(0, 50) + "..." : trimmed);
+            }
+        }
+
+        log.info("📊 [代码分析] 分析结果: {}", structure);
+        return structure;
     }
 
-    @Override
-    public Object executePythonCodeWithResult(String pythonCode, HashMap<String, Object> paramMap, String userId) {
-        // 这个方法已废弃，调用新的实现
-        throw new UnsupportedOperationException("This method is deprecated. Use executePythonCodeWithResult(Long, Long) instead.");
+    /**
+     * 判断是否为简单的变量赋值
+     */
+    private boolean isVariableAssignment(String line) {
+        // 简单检测变量赋值：变量名 = 值
+        return line.matches("^[a-zA-Z_][a-zA-Z0-9_]*\\s*=\\s*.+$") &&
+                !line.contains("(") && !line.contains("[") && !line.contains("{");
+    }
+
+    /**
+     * 转义用户代码中的特殊字符
+     */
+    private String escapeUserCode(String userCode) {
+        if (userCode == null) {
+            return "";
+        }
+
+        // 转义三引号以避免字符串模板冲突
+        return userCode.replace("'''", "\\'\\'\\'");
     }
 }

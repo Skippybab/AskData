@@ -1,0 +1,12 @@
+“D:\project\agent-workflow-api\mt-agent-workflow-api-core\src\main\java\com\mt\agent\workflow\api\controller\TableInfoController.java:254:73
+java: 找不到符号
+  符号:   方法 hasInsertPermission(java.lang.Long,java.lang.Long,<nulltype>)
+  位置: 类型为com.mt.agent.workflow.api.service.TablePermissionService的变量 tablePermissionService
+D:\project\agent-workflow-api\mt-agent-workflow-api-core\src\main\java\com\mt\agent\workflow\api\controller\TableInfoController.java:255:73
+java: 找不到符号
+  符号:   方法 hasUpdatePermission(java.lang.Long,java.lang.Long,<nulltype>)
+  位置: 类型为com.mt.agent.workflow.api.service.TablePermissionService的变量 tablePermissionService
+D:\project\agent-workflow-api\mt-agent-workflow-api-core\src\main\java\com\mt\agent\workflow\api\controller\TableInfoController.java:256:73
+java: 找不到符号
+  符号:   方法 hasDeletePermission(java.lang.Long,java.lang.Long,<nulltype>)
+  位置: 类型为com.mt.agent.workflow.api.service.TablePermissionService的变量 tablePermissionService”

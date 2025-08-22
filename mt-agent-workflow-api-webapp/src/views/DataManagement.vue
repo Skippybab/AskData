@@ -247,6 +247,13 @@
               <el-button
                 type="text"
                 size="small"
+                @click="managePermissions(row)"
+              >
+                访问权限
+              </el-button>
+              <el-button
+                type="text"
+                size="small"
                 @click="previewData(row)"
               >
                 预览数据
@@ -351,6 +358,96 @@
         <el-button type="primary" @click="updateDatabase" :loading="testing">保存修改</el-button>
       </template>
     </el-dialog>
+
+    <!-- 字段管理对话框 -->
+    <el-dialog 
+      v-model="showColumnManageDialog" 
+      title="字段管理" 
+      width="800px"
+      @closed="currentTable = null; tableColumns = []"
+    >
+      <div v-if="currentTable">
+        <h4>表名：{{ currentTable.tableName }}</h4>
+        <el-table :data="tableColumns" border stripe>
+          <el-table-column prop="name" label="字段名" width="150" />
+          <el-table-column prop="type" label="类型" width="120" />
+          <el-table-column label="属性" width="120">
+            <template #default="{ row }">
+              <el-tag v-if="row.isPrimaryKey" type="danger" size="small">主键</el-tag>
+              <el-tag v-if="row.isAutoIncrement" type="warning" size="small">自增</el-tag>
+              <el-tag v-if="!row.nullable" type="info" size="small">非空</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column prop="defaultValue" label="默认值" width="100" />
+          <el-table-column label="备注" min-width="200">
+            <template #default="{ row }">
+              <div v-if="!row.editing">
+                <span>{{ row.comment || '无备注' }}</span>
+                <el-button 
+                  type="text" 
+                  size="small" 
+                  @click="editColumnComment(row)"
+                  style="margin-left: 10px"
+                >
+                  编辑
+                </el-button>
+              </div>
+              <div v-else>
+                <el-input 
+                  v-model="row.tempComment" 
+                  size="small"
+                  @keyup.enter="saveColumnComment(row)"
+                  @blur="cancelEditColumnComment(row)"
+                />
+                <div style="margin-top: 5px">
+                  <el-button type="primary" size="small" @click="saveColumnComment(row)">保存</el-button>
+                  <el-button size="small" @click="cancelEditColumnComment(row)">取消</el-button>
+                </div>
+              </div>
+            </template>
+          </el-table-column>
+        </el-table>
+      </div>
+    </el-dialog>
+
+    <!-- 权限管理对话框 -->
+    <el-dialog 
+      v-model="showPermissionManageDialog" 
+      title="访问权限管理" 
+      width="600px"
+      @opened="loadTablePermissions"
+      @closed="currentTable = null; tablePermissions = {}"
+    >
+      <div v-if="currentTable">
+        <h4>表名：{{ currentTable.tableName }}</h4>
+        <el-form label-width="120px">
+          <el-form-item label="查询权限">
+            <el-switch 
+              v-model="tablePermissions.hasQueryPermission"
+              @change="updatePermission('query', $event)"
+            />
+          </el-form-item>
+          <el-form-item label="插入权限">
+            <el-switch 
+              v-model="tablePermissions.hasInsertPermission"
+              @change="updatePermission('insert', $event)"
+            />
+          </el-form-item>
+          <el-form-item label="更新权限">
+            <el-switch 
+              v-model="tablePermissions.hasUpdatePermission"
+              @change="updatePermission('update', $event)"
+            />
+          </el-form-item>
+          <el-form-item label="删除权限">
+            <el-switch 
+              v-model="tablePermissions.hasDeletePermission"
+              @change="updatePermission('delete', $event)"
+            />
+          </el-form-item>
+        </el-form>
+      </div>
+    </el-dialog>
   </div>
 </template>
 
@@ -365,6 +462,9 @@ const databases = ref([])
 const knowledgeBases = ref([])
 const tables = ref([])
 const selectedDatabase = ref(null)
+const currentTable = ref(null)
+const tableColumns = ref([])
+const tablePermissions = ref({})
 
 // 搜索关键词
 const dbSearchKeyword = ref('')
@@ -376,6 +476,8 @@ const showTableManageDialog = ref(false)
 const showAddDbDialog = ref(false)
 const showEditDbDialog = ref(false)
 const showAddKnowledgeDialog = ref(false)
+const showColumnManageDialog = ref(false)
+const showPermissionManageDialog = ref(false)
 
 // 表单数据
 const dbForm = ref({
@@ -576,9 +678,103 @@ const showTableDetails = (table) => {
   ElMessage.info('表详情功能开发中')
 }
 
-const manageColumns = (table) => {
-  // TODO: 管理字段
-  ElMessage.info('字段管理功能开发中')
+const manageColumns = async (table) => {
+  try {
+    // 获取表字段信息
+    const result = await api.tableInfo.getTableColumns(selectedDatabase.value.id, table.id)
+    if (result.code === 200) {
+      currentTable.value = table
+      tableColumns.value = result.data || []
+      showColumnManageDialog.value = true
+    } else {
+      ElMessage.error(result.message || '获取字段信息失败')
+    }
+  } catch (error) {
+    console.error('获取字段信息失败:', error)
+    ElMessage.error('获取字段信息失败')
+  }
+}
+
+// 字段备注编辑
+const editColumnComment = (column) => {
+  column.editing = true
+  column.tempComment = column.comment
+}
+
+const saveColumnComment = async (column) => {
+  try {
+    const result = await api.tableInfo.updateColumnComment(
+      selectedDatabase.value.id, 
+      currentTable.value.id, 
+      column.name, 
+      column.tempComment || ''
+    )
+    if (result.code === 200) {
+      column.comment = column.tempComment
+      column.editing = false
+      ElMessage.success('字段备注更新成功')
+    } else {
+      ElMessage.error(result.message || '更新失败')
+    }
+  } catch (error) {
+    console.error('更新字段备注失败:', error)
+    ElMessage.error('更新字段备注失败')
+  }
+}
+
+const cancelEditColumnComment = (column) => {
+  column.editing = false
+  column.tempComment = column.comment
+}
+
+// 权限管理
+const managePermissions = async (table) => {
+  currentTable.value = table
+  showPermissionManageDialog.value = true
+}
+
+const loadTablePermissions = async () => {
+  if (!currentTable.value) return
+  
+  try {
+    const result = await api.tableInfo.getTablePermission(selectedDatabase.value.id, currentTable.value.id)
+    if (result.code === 200) {
+      tablePermissions.value = result.data || {}
+    } else {
+      ElMessage.error(result.message || '获取权限信息失败')
+    }
+  } catch (error) {
+    console.error('获取权限信息失败:', error)
+    ElMessage.error('获取权限信息失败')
+  }
+}
+
+const updatePermission = async (type, enabled) => {
+  try {
+    const result = await api.tableInfo.updateTablePermission(
+      selectedDatabase.value.id,
+      currentTable.value.id,
+      enabled
+    )
+    if (result.code === 200) {
+      ElMessage.success(result.data || '权限更新成功')
+    } else {
+      ElMessage.error(result.message || '权限更新失败')
+      // 回滚状态
+      if (type === 'query') tablePermissions.value.hasQueryPermission = !enabled
+      else if (type === 'insert') tablePermissions.value.hasInsertPermission = !enabled
+      else if (type === 'update') tablePermissions.value.hasUpdatePermission = !enabled
+      else if (type === 'delete') tablePermissions.value.hasDeletePermission = !enabled
+    }
+  } catch (error) {
+    console.error('更新权限失败:', error)
+    ElMessage.error('更新权限失败')
+    // 回滚状态
+    if (type === 'query') tablePermissions.value.hasQueryPermission = !enabled
+    else if (type === 'insert') tablePermissions.value.hasInsertPermission = !enabled
+    else if (type === 'update') tablePermissions.value.hasUpdatePermission = !enabled
+    else if (type === 'delete') tablePermissions.value.hasDeletePermission = !enabled
+  }
 }
 
 const previewData = (table) => {

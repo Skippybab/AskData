@@ -47,7 +47,6 @@ public class ChatOrchestratorServiceImpl implements ChatOrchestratorService {
         }
     }
 
-    @Override
     public void processDataQuestion(Long sessionId, Long userId, String question, Long dbConfigId, Long tableId, SseEmitter emitter) {
         log.info("开始处理数据问答, sessionId: {}, userId: {}, dbConfigId: {}", sessionId, userId, dbConfigId);
 
@@ -60,8 +59,8 @@ public class ChatOrchestratorServiceImpl implements ChatOrchestratorService {
                 // 如果指定了表ID，获取单个表的信息
                 allTableNames = tableInfoService.getStandardTableNameFormat(dbConfigId, tableId, userId);
             } else {
-                // 如果没有指定表ID，获取所有启用的表信息
-                allTableNames = tableInfoService.getEnabledTablesDdl(dbConfigId, userId);
+                // 如果没有指定表ID，获取所有启用的表信息（格式化后用于Dify接口）
+                allTableNames = tableInfoService.getEnabledTablesFormattedForDify(dbConfigId, userId);
             }
             
             if (allTableNames == null || allTableNames.isBlank()) {
@@ -110,15 +109,20 @@ public class ChatOrchestratorServiceImpl implements ChatOrchestratorService {
                 // 2. 执行代码
                 PythonExecutionResult result = pythonExecutorService.executePythonCodeWithResult(initialMessage.getId(), dbConfigId);
 
-                // 3. 更新消息并向前端发送结果
+                // 3. 更新消息并向前端发送结果（包含DONE事件）
                 updateMessageAndSendResult(initialMessage, result, emitter);
+                
+                // 4. 完成SSE流
+                log.info("🔍 [数据问答] 完成SSE连接");
+                emitter.complete();
             } else {
                 // 如果没有Python代码，只保存思考过程
                 saveInitialAssistantMessage(sessionId, userId, thinkingContent.toString(), null);
+                
+                // 发送完成事件并结束
+                emitter.send(SseEmitter.event().name(EventType.DONE.value).data("{\"status\":\"success\",\"message\":\"处理完成\"}"));
+                emitter.complete();
             }
-
-            emitter.send(SseEmitter.event().name(EventType.DONE.value).data("{\"status\":\"success\"}"));
-            emitter.complete();
             log.info("数据问答处理完成, sessionId: {}", sessionId);
         } catch (Exception e) {
             log.error("处理Dify响应或执行Python代码失败: {}", e.getMessage(), e);
@@ -139,7 +143,8 @@ public class ChatOrchestratorServiceImpl implements ChatOrchestratorService {
                 sendSseMessage(emitter, EventType.LLM_TOKEN, Map.of("content", thinking, "type", "thinking"));
             }
 
-            Pattern codePattern = Pattern.compile("```Python\\s*(.*?)\\s*```", Pattern.DOTALL);
+            // 支持多种Python代码块格式：```python, ```Python, ```py, ```PY
+            Pattern codePattern = Pattern.compile("```(?:python|py)\\s*(.*?)\\s*```", Pattern.DOTALL | Pattern.CASE_INSENSITIVE);
             Matcher codeMatcher = codePattern.matcher(codeContent);
             if (codeMatcher.find()) {
                 pythonCode.append(codeMatcher.group(1).trim());
@@ -180,6 +185,10 @@ public class ChatOrchestratorServiceImpl implements ChatOrchestratorService {
                     log.info("🔍 [数据问答] 发送截断数据给前端, 数据长度: {}, 原始大小: {}", 
                         truncatedData.length(), resultData.length());
                     sendSseMessage(emitter, EventType.LLM_TOKEN, truncatedResult);
+                    
+                    // 发送完成事件
+                    log.info("🔍 [数据问答] 发送查询完成事件（截断数据）");
+                    sendSseMessage(emitter, EventType.DONE, Map.of("status", "success", "message", "查询执行完成（数据已截断）"));
                 } catch (Exception e) {
                     log.error("🔍 [数据问答] 发送SSE截断结果失败", e);
                 }
@@ -196,6 +205,10 @@ public class ChatOrchestratorServiceImpl implements ChatOrchestratorService {
                     log.debug("🔍 [数据问答] 发送给前端的数据内容前200字符: {}", 
                         resultData != null ? resultData.substring(0, Math.min(200, resultData.length())) : "null");
                     sendSseMessage(emitter, EventType.LLM_TOKEN, sseData);
+                    
+                    // 发送完成事件
+                    log.info("🔍 [数据问答] 发送查询完成事件");
+                    sendSseMessage(emitter, EventType.DONE, Map.of("status", "success", "message", "查询执行完成"));
                 } catch (Exception e) {
                     log.error("🔍 [数据问答] 发送SSE正常结果失败", e);
                 }
@@ -274,7 +287,7 @@ public class ChatOrchestratorServiceImpl implements ChatOrchestratorService {
     @Override
     @Transactional
     public DataQuestionResponse processDataQuestionSync(Long sessionId, Long userId, String question, Long dbConfigId, Long tableId) {
-        log.info("🔍 [数据问答] 开始处理数据问答(同步版本), sessionId: {}, userId: {}, dbConfigId: {}, tableId: {}", sessionId, userId, dbConfigId, tableId);
+        log.info("🔍 [数据问答] 开始处理数据问答, sessionId: {}, userId: {}, dbConfigId: {}, tableId: {}", sessionId, userId, dbConfigId, tableId);
         log.info("🔍 [数据问答] 用户问题: {}", question);
         
         // 设置整体超时时间（4分钟，比前端超时时间短）
@@ -296,8 +309,8 @@ public class ChatOrchestratorServiceImpl implements ChatOrchestratorService {
                 // 如果指定了表ID，获取单个表的信息
                 tableInfo = tableInfoService.getStandardTableNameFormat(dbConfigId, tableId, userId);
             } else {
-                // 如果没有指定表ID，获取所有启用的表信息
-                tableInfo = tableInfoService.getEnabledTablesDdl(dbConfigId, userId);
+                // 如果没有指定表ID，获取所有启用的表信息（格式化后用于Dify接口）
+                tableInfo = tableInfoService.getEnabledTablesFormattedForDify(dbConfigId, userId);
             }
             
             if (tableInfo == null || tableInfo.trim().isEmpty()) {
@@ -366,7 +379,8 @@ public class ChatOrchestratorServiceImpl implements ChatOrchestratorService {
                         log.warn("🔍 [数据问答] 未找到思考内容标签");
                     }
 
-                    Pattern codePattern = Pattern.compile("```Python\\s*(.*?)\\s*```", Pattern.DOTALL);
+                    // 支持多种Python代码块格式：```python, ```Python, ```py, ```PY
+                    Pattern codePattern = Pattern.compile("```(?:python|py)\\s*(.*?)\\s*```", Pattern.DOTALL | Pattern.CASE_INSENSITIVE);
                     Matcher codeMatcher = codePattern.matcher(codeContent);
                     if (codeMatcher.find()) {
                         String extractedCode = codeMatcher.group(1).trim();

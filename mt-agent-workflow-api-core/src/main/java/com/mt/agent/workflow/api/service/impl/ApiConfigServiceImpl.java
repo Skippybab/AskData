@@ -44,6 +44,23 @@ public class ApiConfigServiceImpl extends ServiceImpl<ApiConfigMapper, ApiConfig
     }
     
     @Override
+    public ApiConfig getApiConfigByPath(String apiPath) {
+        log.info("根据API路径获取配置 - 路径: {}", apiPath);
+        
+        QueryWrapper<ApiConfig> wrapper = new QueryWrapper<>();
+        wrapper.eq("api_path", apiPath);
+        wrapper.eq("status", 1); // 只查询启用的API
+        
+        ApiConfig config = this.getOne(wrapper);
+        if (config != null) {
+            log.debug("找到API配置 - 路径: {}, 用户: {}", apiPath, config.getUserId());
+        } else {
+            log.warn("未找到启用的API配置 - 路径: {}", apiPath);
+        }
+        return config;
+    }
+    
+    @Override
     public ApiConfig createApiConfig(ApiConfig apiConfig) {
         // 生成唯一的API路径和密钥
         if (apiConfig.getApiPath() == null || apiConfig.getApiPath().trim().isEmpty()) {
@@ -88,12 +105,6 @@ public class ApiConfigServiceImpl extends ServiceImpl<ApiConfigMapper, ApiConfig
         return this.updateById(apiConfig);
     }
     
-    @Override
-    public ApiConfig getApiConfigByPath(String apiPath) {
-        QueryWrapper<ApiConfig> wrapper = new QueryWrapper<>();
-        wrapper.eq("api_path", apiPath);
-        return this.getOne(wrapper);
-    }
     
     @Override
     public boolean deleteApiConfig(Long id, Long userId) {
