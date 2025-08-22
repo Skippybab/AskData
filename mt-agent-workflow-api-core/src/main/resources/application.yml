@@ -1,0 +1,145 @@
+spring:
+  group:
+    test:
+      - test
+      - redis
+
+  datasource:
+    url: jdbc:mysql://rm-7xv29oc5w125d296iyo.mysql.rds.aliyuncs.com:3306/ai-common-api?rewriteBatchedStatements=true&characterEncoding=utf-8&serverTimezone=Asia/Shanghai
+    username: mobirit_test
+    password: Mobirit1709!
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 50MB
+
+  data:
+    redis:
+      host: 113.45.193.155
+      port: 6379
+      password: Mobirit1709!
+      database: 0
+      timeout: 3000
+
+  # Jackson配置
+  jackson:
+    date-format: yyyy-MM-dd
+    time-zone: Asia/Shanghai
+    serialization:
+      write-dates-as-timestamps: false
+
+  # Spring AI配置
+  ai:
+    # 阿里云通义千问配置
+    dashscope:
+      apikey: ${DASHSCOPE_API_KEY:sk-7f3db520a32e40d2a83e7141e5ddc300}
+
+    siliconFlow:
+      apikey: ${SILICONFLOW_API_KEY:sk-svltxreamtmjtacfhaqntztrmnffolnnuiombzhprrduqymj}
+
+
+server:
+  port: 8080
+  servlet:
+    context-path: /
+
+# MyBatis-Plus配置
+mybatis-plus:
+  configuration:
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+    map-underscore-to-camel-case: true
+  global-config:
+    db-config:
+      id-type: auto
+      logic-delete-field: deleted
+      logic-delete-value: 1
+      logic-not-delete-value: 0
+  mapper-locations: classpath*:/mapper/**/*.xml
+  type-aliases-package: com.mt.agent.workflow.api.entity
+
+# 文件上传配置
+file:
+  upload:
+    path: /data/apps/mt-visit/mt-visit-webapp/dist/pic/
+
+# 跨域配置
+cors:
+  allowed-origins: "*"
+  allowed-methods: GET,POST,PUT,DELETE,OPTIONS
+  allowed-headers: "*"
+
+logging:
+  level:
+    com.caict.core: INFO
+    com.caict.core.mapper: DEBUG
+    com.mt.agent.workflow.api: DEBUG
+    com.mt.agent.workflow.api.service.impl.DifyServiceImpl: DEBUG
+    com.mt.agent.workflow.api.service.impl.ChatOrchestratorServiceImpl: DEBUG
+    com.mt.agent.workflow.api.controller.ChatController: DEBUG
+    org.springframework.web: DEBUG
+
+# Dify配置
+dify:
+  nl2sql:
+    base-url: http://113.45.193.155:8888/v1
+    api-key: app-vTUi63XiyV8jVWnFyhBbtB9Y
+  visit-chat:
+    base-url: http://113.45.193.155:8888/v1
+    api-key: app-vTUi63XiyV8jVWnFyhBbtB9Y
+  common:
+    timeout-minutes: 5
+    max-context-records: 50
+
+# JWT配置
+jwt:
+  secret: your-secret-key-here-make-it-long-and-secure-in-production
+  expiration: 86400
+
+# NL2SQL配置
+nl2sql:
+  mode: python  # python或direct，python模式执行Python代码，direct模式直接生成SQL
+  python:
+    timeout-seconds: 300
+    temp-dir: /tmp/python_exec
+    cleanup-enabled: true
+
+# AI服务配置
+ai:
+  service:
+    type: dify  # dify, openai, claude等
+    model: gpt-4
+    temperature: 0.1
+    max-tokens: 4096
+
+# Python执行环境配置
+python:
+  executor:
+    enabled: true
+    python-command: python  # 或python3
+    max-concurrent: 10
+    cleanup-on-exit: true
+
+
+# Redisson配置
+redisson:
+  # 单节点配置
+  singleServerConfig:
+    # 连接地址，格式为redis://host:port
+    address: redis://113.45.193.155:6379
+    # 密码
+    password: Mobirit1709!
+    # 连接超时，单位：毫秒
+    connectTimeout: 3000
+    # 命令等待超时，单位：毫秒
+    timeout: 3000
+    # 连接池大小
+    connectionPoolSize: 64
+    # 最小空闲连接数
+    connectionMinimumIdleSize: 24
+    # 重试次数
+    retryAttempts: 3
+    # 重试间隔，单位：毫秒
+    retryInterval: 1500
+

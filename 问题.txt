@@ -1,0 +1,1 @@
+控制台报错“ERROR 20980 --- [onPool-worker-1] .m.a.w.a.s.i.PythonDirectExecutorService : 🔍 [SQL执行] SQL执行失败: 配置不存在”，问题定位到是没有获取到用户当前使用的数据库配置ID，所以使用了默认数据库配置IDPythonDirectExecutorService的private Object execSQL无法获取数据库配置，从而无法连接到用户当前会话的数据库表进行查询。
