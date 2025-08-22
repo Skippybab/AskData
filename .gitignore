@@ -6,13 +6,8 @@
 *.log
 *.ctxt
 .mtj.tmp/
-*.jar
-*.war
-*.nar
-*.ear
-*.zip
-*.tar.gz
-*.rar
+*.tmp
+*.temp
 hs_err_pid*
 replay_pid*
 
@@ -46,21 +41,13 @@ yarn-error.log*
 .npm
 .yarn-integrity
 
-# Vue.js
+# Build outputs
 dist/
-.vite/
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
+build/
+out/
 
 # OS
 .DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
 Thumbs.db
 
 # Logs
@@ -97,13 +84,27 @@ jspm_packages/
 # dotenv environment variables file
 .env
 
+# temp directories
+temp/
+tmp/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
 # Database
 *.db
 *.sqlite
 *.sqlite3
 
-# Temporary files
-*.tmp
-*.temp
-.cursor/
-.svn/
+# Application specific
+application-local.yml
+application-prod.yml
