@@ -36,7 +36,20 @@ export const dbConfigApi = {
   updateStatus: (id, status) => request.put(`/api/db/config/${id}/status`, { status }),
   
   // 测试连接
-  testConnection: (data) => request.post('/api/db/config/test', data),
+  testConnection: (data) => {
+    // 如果有ID，使用验证接口；否则先保存再验证
+    if (data.id) {
+      return request.post(`/api/db/config/${data.id}/verify`)
+    } else {
+      // 对于新配置，先保存再验证
+      return request.post('/api/db/config', data).then(res => {
+        if (res.data && res.data.id) {
+          return request.post(`/api/db/config/${res.data.id}/verify`)
+        }
+        throw new Error('保存配置失败')
+      })
+    }
+  },
   
   // 同步表结构
   syncSchema: (id) => request.post(`/api/db/schema/${id}/sync`)

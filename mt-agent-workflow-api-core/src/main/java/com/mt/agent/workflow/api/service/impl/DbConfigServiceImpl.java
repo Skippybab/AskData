@@ -67,8 +67,6 @@ public class DbConfigServiceImpl implements DbConfigService {
 		if (config.getId() == null) {
 			dbConfigMapper.insert(config);
 			auditService.log("create_db_config", "db_config", config.getId(), null, null);
-			
-
 		} else {
 			dbConfigMapper.updateById(config);
 			auditService.log("update_db_config", "db_config", config.getId(), null, null);

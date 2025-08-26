@@ -677,10 +677,19 @@ const testConnection = async () => {
   connectionValid.value = false
   
   try {
-    const result = await api.dbConfig.testConnection({
-      ...dbForm.value,
-      rawPassword: dbForm.value.password
-    })
+    // 构建测试数据，确保包含所有必要字段
+    const testData = {
+      name: dbForm.value.name,
+      dbType: dbForm.value.dbType,
+      host: dbForm.value.host,
+      port: dbForm.value.port,
+      databaseName: dbForm.value.databaseName,
+      username: dbForm.value.username,
+      rawPassword: dbForm.value.password,
+      status: 1
+    }
+    
+    const result = await api.dbConfig.testConnection(testData)
     connectionValid.value = true
     ElMessage.success('连接成功')
   } catch (error) {
