@@ -6,9 +6,7 @@ import java.util.List;
 public interface DbConfigService {
     DbConfig createOrUpdate(DbConfig config);
     boolean verifyConnection(Long userId, Long dbConfigId);
-    boolean grantUse(Long dbConfigId, Integer subjectType, Long subjectId);
-    boolean grantManage(Long dbConfigId, Integer subjectType, Long subjectId);
-    boolean checkAccess(Long userId, Long dbConfigId, String perm);
+
     DbConfig getById(Long userId, Long id);
     boolean deleteConfig(Long userId, Long id);
 	

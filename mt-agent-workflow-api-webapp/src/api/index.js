@@ -53,8 +53,7 @@ export const schemaApi = {
   // 更新表注释
   updateTableComment: (tableId, comment) => request.put(`/api/db/schema/table/${tableId}/comment`, { comment }),
   
-  // 更新表访问权限
-  updateTableAccess: (tableId, enabled) => request.put(`/api/db/schema/table/${tableId}/access`, { enabled }),
+
   
   // 设置表启用状态
   setTableEnabled: (dbConfigId, tableId, enabled) => request.put(`/api/db/schema/${dbConfigId}/tables/${tableId}/enabled`, { enabled })
@@ -75,15 +74,6 @@ export const tableInfoApi = {
   updateColumnComment: (dbConfigId, tableId, columnName, comment) => 
     request.put(`/api/table-info/columns/comment`, null, { 
       params: { dbConfigId, tableId, columnName, comment }
-    }),
-  
-  // 获取表权限
-  getTablePermission: (dbConfigId, tableId) => request.get(`/api/table-info/permission`, { params: { dbConfigId, tableId } }),
-  
-  // 更新表权限
-  updateTablePermission: (dbConfigId, tableId, enabled) => 
-    request.put(`/api/table-info/permission`, null, { 
-      params: { dbConfigId, tableId, enabled }
     })
 }
 

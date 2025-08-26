@@ -50,41 +50,4 @@ export const dbApi = {
   }
 }
 
-// 表权限管理API
-export const tablePermissionApi = {
-  // 检查用户是否有表的查询权限
-  checkPermission(userId, dbConfigId, tableName) {
-    return request({ 
-      url: '/api/table-permission/check', 
-      method: 'get', 
-      params: { userId, dbConfigId, tableName } 
-    })
-  },
-  
-  // 获取用户有权限的表列表
-  getUserAccessibleTables(userId, dbConfigId) {
-    return request({ 
-      url: '/api/table-permission/tables', 
-      method: 'get', 
-      params: { userId, dbConfigId } 
-    })
-  },
-  
-  // 为用户授权表访问权限
-  grantPermission(data) {
-    return request({ 
-      url: '/api/table-permission/grant', 
-      method: 'post', 
-      data 
-    })
-  },
-  
-  // 撤销用户的表访问权限
-  revokePermission(data) {
-    return request({ 
-      url: '/api/table-permission/revoke', 
-      method: 'post', 
-      data 
-    })
-  }
-}
+

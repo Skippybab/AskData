@@ -224,16 +224,7 @@
             </template>
           </el-table-column>
           
-          <el-table-column label="访问权限" width="120">
-            <template #default="{ row }">
-              <el-switch
-                v-model="row.enabled"
-                @change="updateTableAccess(row)"
-                active-text="开启"
-                inactive-text="关闭"
-              />
-            </template>
-          </el-table-column>
+
           
           <el-table-column label="操作" width="150">
             <template #default="{ row }">
@@ -244,13 +235,7 @@
               >
                 管理字段
               </el-button>
-              <el-button
-                type="text"
-                size="small"
-                @click="managePermissions(row)"
-              >
-                访问权限
-              </el-button>
+
               <el-button
                 type="text"
                 size="small"
@@ -410,44 +395,7 @@
       </div>
     </el-dialog>
 
-    <!-- 权限管理对话框 -->
-    <el-dialog 
-      v-model="showPermissionManageDialog" 
-      title="访问权限管理" 
-      width="600px"
-      @opened="loadTablePermissions"
-      @closed="currentTable = null; tablePermissions = {}"
-    >
-      <div v-if="currentTable">
-        <h4>表名：{{ currentTable.tableName }}</h4>
-        <el-form label-width="120px">
-          <el-form-item label="查询权限">
-            <el-switch 
-              v-model="tablePermissions.hasQueryPermission"
-              @change="updatePermission('query', $event)"
-            />
-          </el-form-item>
-          <el-form-item label="插入权限">
-            <el-switch 
-              v-model="tablePermissions.hasInsertPermission"
-              @change="updatePermission('insert', $event)"
-            />
-          </el-form-item>
-          <el-form-item label="更新权限">
-            <el-switch 
-              v-model="tablePermissions.hasUpdatePermission"
-              @change="updatePermission('update', $event)"
-            />
-          </el-form-item>
-          <el-form-item label="删除权限">
-            <el-switch 
-              v-model="tablePermissions.hasDeletePermission"
-              @change="updatePermission('delete', $event)"
-            />
-          </el-form-item>
-        </el-form>
-      </div>
-    </el-dialog>
+
   </div>
 </template>
 
@@ -464,7 +412,7 @@ const tables = ref([])
 const selectedDatabase = ref(null)
 const currentTable = ref(null)
 const tableColumns = ref([])
-const tablePermissions = ref({})
+
 
 // 搜索关键词
 const dbSearchKeyword = ref('')
@@ -477,7 +425,7 @@ const showAddDbDialog = ref(false)
 const showEditDbDialog = ref(false)
 const showAddKnowledgeDialog = ref(false)
 const showColumnManageDialog = ref(false)
-const showPermissionManageDialog = ref(false)
+
 
 // 表单数据
 const dbForm = ref({
@@ -661,17 +609,7 @@ const saveTableComment = async (row) => {
   }
 }
 
-const updateTableAccess = async (row) => {
-  try {
-    // 需要数据库ID和表ID
-    const dbConfigId = selectedDatabase.value.id
-    const result = await api.schema.setTableEnabled(dbConfigId, row.id, row.enabled)
-    ElMessage.success(row.enabled ? '已开启访问权限' : '已关闭访问权限')
-  } catch (error) {
-    row.enabled = !row.enabled // 回滚
-    ElMessage.error(error.message || '更新失败')
-  }
-}
+
 
 const showTableDetails = (table) => {
   // TODO: 显示表详情
@@ -727,55 +665,7 @@ const cancelEditColumnComment = (column) => {
   column.tempComment = column.comment
 }
 
-// 权限管理
-const managePermissions = async (table) => {
-  currentTable.value = table
-  showPermissionManageDialog.value = true
-}
 
-const loadTablePermissions = async () => {
-  if (!currentTable.value) return
-  
-  try {
-    const result = await api.tableInfo.getTablePermission(selectedDatabase.value.id, currentTable.value.id)
-    if (result.code === 200) {
-      tablePermissions.value = result.data || {}
-    } else {
-      ElMessage.error(result.message || '获取权限信息失败')
-    }
-  } catch (error) {
-    console.error('获取权限信息失败:', error)
-    ElMessage.error('获取权限信息失败')
-  }
-}
-
-const updatePermission = async (type, enabled) => {
-  try {
-    const result = await api.tableInfo.updateTablePermission(
-      selectedDatabase.value.id,
-      currentTable.value.id,
-      enabled
-    )
-    if (result.code === 200) {
-      ElMessage.success(result.data || '权限更新成功')
-    } else {
-      ElMessage.error(result.message || '权限更新失败')
-      // 回滚状态
-      if (type === 'query') tablePermissions.value.hasQueryPermission = !enabled
-      else if (type === 'insert') tablePermissions.value.hasInsertPermission = !enabled
-      else if (type === 'update') tablePermissions.value.hasUpdatePermission = !enabled
-      else if (type === 'delete') tablePermissions.value.hasDeletePermission = !enabled
-    }
-  } catch (error) {
-    console.error('更新权限失败:', error)
-    ElMessage.error('更新权限失败')
-    // 回滚状态
-    if (type === 'query') tablePermissions.value.hasQueryPermission = !enabled
-    else if (type === 'insert') tablePermissions.value.hasInsertPermission = !enabled
-    else if (type === 'update') tablePermissions.value.hasUpdatePermission = !enabled
-    else if (type === 'delete') tablePermissions.value.hasDeletePermission = !enabled
-  }
-}
 
 const previewData = (table) => {
   // TODO: 预览数据

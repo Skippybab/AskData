@@ -230,61 +230,7 @@ public class TableInfoController {
         }
     }
     
-    /**
-     * 获取表访问权限
-     * 根据项目需求，用户登录后对所有数据操作均有权限，无需权限控制
-     * 
-     * @param dbConfigId 数据库配置ID
-     * @param tableId 表ID
-     * @return 权限信息
-     */
-    @GetMapping("/permission")
-    public Result<Map<String, Object>> getTablePermission(@RequestParam Long dbConfigId, @RequestParam Long tableId) {
-        try {
-            log.info("📊 [权限管理] 获取表访问权限, dbConfigId: {}, tableId: {}", dbConfigId, tableId);
-            
-            // 根据项目需求，用户登录后无需任何权限控制，默认拥有所有权限
-            Map<String, Object> permission = new HashMap<>();
-            permission.put("hasQueryPermission", true);
-            permission.put("hasInsertPermission", true);
-            permission.put("hasUpdatePermission", true);
-            permission.put("hasDeletePermission", true);
-            
-            log.info("📊 [权限管理] 成功获取权限信息（默认全部权限开放）");
-            return Result.success(permission);
-            
-        } catch (Exception e) {
-            log.error("📊 [权限管理] 获取权限信息失败: {}", e.getMessage(), e);
-            return Result.error("获取权限信息失败: " + e.getMessage());
-        }
-    }
-    
-    /**
-     * 更新表访问权限
-     * 根据项目需求，用户登录后无需权限控制，此接口保留但不执行实际权限操作
-     * 
-     * @param dbConfigId 数据库配置ID
-     * @param tableId 表ID
-     * @param enabled 是否启用
-     * @return 更新结果
-     */
-    @PutMapping("/permission")
-    public Result<String> updateTablePermission(@RequestParam Long dbConfigId, 
-                                              @RequestParam Long tableId,
-                                              @RequestParam Boolean enabled) {
-        try {
-            log.info("📊 [权限管理] 更新表访问权限, dbConfigId: {}, tableId: {}, enabled: {}", 
-                    dbConfigId, tableId, enabled);
-            
-            // 根据项目需求，用户登录后无需权限控制，直接返回成功
-            log.info("📊 [权限管理] 权限更新成功（无权限控制模式）");
-            return Result.success("权限设置成功，系统当前无权限限制");
-            
-        } catch (Exception e) {
-            log.error("📊 [权限管理] 更新权限失败: {}", e.getMessage(), e);
-            return Result.error("更新权限失败: " + e.getMessage());
-        }
-    }
+
     
     /**
      * 批量启用数据库下的所有表

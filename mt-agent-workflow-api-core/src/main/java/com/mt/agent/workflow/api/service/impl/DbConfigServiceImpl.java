@@ -2,8 +2,7 @@ package com.mt.agent.workflow.api.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.mt.agent.workflow.api.entity.DbConfig;
-import com.mt.agent.workflow.api.entity.DbConfigAcl;
-import com.mt.agent.workflow.api.mapper.DbConfigAclMapper;
+
 import com.mt.agent.workflow.api.mapper.DbConfigMapper;
 import com.mt.agent.workflow.api.service.AuditService;
 import com.mt.agent.workflow.api.service.DbConfigService;
@@ -23,8 +22,7 @@ public class DbConfigServiceImpl implements DbConfigService {
 
 	@Autowired
 	private DbConfigMapper dbConfigMapper;
-	@Autowired
-	private DbConfigAclMapper dbConfigAclMapper;
+
 	@Autowired
 	private AuditService auditService;
 
@@ -70,12 +68,7 @@ public class DbConfigServiceImpl implements DbConfigService {
 			dbConfigMapper.insert(config);
 			auditService.log("create_db_config", "db_config", config.getId(), null, null);
 			
-			// 自动创建权限记录，确保用户对自己创建的配置有完全权限
-			try {
-				grantManage(config.getId(), 1, config.getUserId()); // 1表示用户类型
-			} catch (Exception e) {
-				log.warn("自动创建权限记录失败: {}", e.getMessage());
-			}
+
 		} else {
 			dbConfigMapper.updateById(config);
 			auditService.log("update_db_config", "db_config", config.getId(), null, null);
@@ -132,29 +125,7 @@ public class DbConfigServiceImpl implements DbConfigService {
 		}
 	}
 
-	@Override
-	@Transactional
-	public boolean grantUse(Long dbConfigId, Integer subjectType, Long subjectId) {
-		DbConfigAcl acl = new DbConfigAcl();
-		acl.setDbConfigId(dbConfigId);
-		acl.setSubjectType(subjectType);
-		acl.setSubjectId(subjectId);
-		acl.setPermUse(1);
-		acl.setPermManage(0);
-		return dbConfigAclMapper.insert(acl) > 0;
-	}
 
-	@Override
-	@Transactional
-	public boolean grantManage(Long dbConfigId, Integer subjectType, Long subjectId) {
-		DbConfigAcl acl = new DbConfigAcl();
-		acl.setDbConfigId(dbConfigId);
-		acl.setSubjectType(subjectType);
-		acl.setSubjectId(subjectId);
-		acl.setPermUse(1);
-		acl.setPermManage(1);
-		return dbConfigAclMapper.insert(acl) > 0;
-	}
 
 	/**
 	 * 更新数据库配置状态
@@ -196,18 +167,7 @@ public class DbConfigServiceImpl implements DbConfigService {
 		}
 	}
 
-	@Override
-	public boolean checkAccess(Long userId, Long dbConfigId, String perm) {
-		LambdaQueryWrapper<DbConfigAcl> qw = new LambdaQueryWrapper<DbConfigAcl>()
-				.eq(DbConfigAcl::getDbConfigId, dbConfigId)
-				.eq(DbConfigAcl::getSubjectType, 1)
-				.eq(DbConfigAcl::getSubjectId, userId);
-		DbConfigAcl acl = dbConfigAclMapper.selectOne(qw);
-		if (acl == null) return false;
-		if ("use".equalsIgnoreCase(perm)) return acl.getPermUse() != null && acl.getPermUse() == 1;
-		if ("manage".equalsIgnoreCase(perm)) return acl.getPermManage() != null && acl.getPermManage() == 1;
-		return false;
-	}
+
 
 	@Override
 	public DbConfig getById(Long userId, Long id) {
@@ -221,14 +181,8 @@ public class DbConfigServiceImpl implements DbConfigService {
 	@Override
 	@Transactional
 	public boolean deleteConfig(Long userId, Long id) {
-		if (!checkAccess(userId, id, "manage")) {
-			throw new SecurityException("没有权限删除该数据库配置");
-		}
-		
 		// 删除相关的ACL记录
-		LambdaQueryWrapper<DbConfigAcl> aclWrapper = new LambdaQueryWrapper<>();
-		aclWrapper.eq(DbConfigAcl::getDbConfigId, id);
-		dbConfigAclMapper.delete(aclWrapper);
+		// 由于已移除权限控制，直接删除配置
 		
 		// 删除数据库配置
 		int result = dbConfigMapper.deleteById(id);

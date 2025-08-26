@@ -46,7 +46,7 @@ public class DbConfigController {
             Long userId = 1L;
             DbConfig cfg = dbConfigService.getById(userId, id);
             if (cfg == null) {
-                return Result.error("配置不存在或无权限访问");
+                return Result.error("配置不存在");
             }
             cfg.setPasswordCipher(null);
             cfg.setRawPassword(null);
@@ -65,11 +65,6 @@ public class DbConfigController {
             HttpServletRequest request
     ) {
         try {
-            // 移除用户ID过滤，实现最小闭环 - 所有用户都能看到所有配置
-            // Long userId = (Long) request.getAttribute("userId");
-            // if (userId == null) {
-            //     userId = 1L; // 默认用户ID
-            // }
             
             Page<DbConfig> page = new Page<>(current, size);
             LambdaQueryWrapper<DbConfig> qw = new LambdaQueryWrapper<>();
@@ -105,7 +100,7 @@ public class DbConfigController {
             boolean ok = dbConfigService.verifyConnection(userId, id);
             return ok ? Result.success(true) : Result.error("连接失败");
         } catch (SecurityException e) {
-            return Result.error("权限不足: " + e.getMessage());
+            return Result.error("操作失败: " + e.getMessage());
         } catch (IllegalArgumentException e) {
             return Result.error("参数错误: " + e.getMessage());
         } catch (RuntimeException e) {
@@ -117,7 +112,7 @@ public class DbConfigController {
 
     @PostMapping("/schema/{id}/sync")
     public Result<Long> startSync(@PathVariable Long id) {
-        // TODO: 增加权限校验
+
         return Result.success(schemaSyncService.startSync(id).getId());
     }
 
@@ -127,10 +122,7 @@ public class DbConfigController {
             Long userId = 1L;
 
             
-            // 检查权限
-            if (!dbConfigService.checkAccess(userId, id, "manage")) {
-                return Result.error("没有权限删除该数据库配置");
-            }
+
             
             // 删除配置
             boolean deleted = dbConfigService.deleteConfig(userId, id);

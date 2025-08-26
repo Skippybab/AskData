@@ -62,13 +62,6 @@ public class SchemaController {
                 .eq(TableInfo::getEnabled, 1);
         List<TableInfo> tables = tableInfoMapper.selectList(qw);
         
-//        log.info("查询数据库 {} 的启用表信息，共找到 {} 个启用表", dbConfigId, tables.size());
-        for (TableInfo table : tables) {
-//            log.info("启用表: {}, DDL长度: {}",
-//                    table.getTableName(),
-//                    table.getTableDdl() != null ? table.getTableDdl().length() : 0);
-        }
-        
         return Result.success(tables);
     }
 
@@ -90,7 +83,7 @@ public class SchemaController {
             if (updatedRows > 0) {
                 return Result.success("设置成功");
             } else {
-                return Result.error("表不存在或无权限修改");
+                return Result.error("表不存在");
             }
         } catch (Exception e) {
             return Result.error("设置失败: " + e.getMessage());

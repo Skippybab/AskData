@@ -107,41 +107,4 @@ public class AISQLQueryServiceImpl implements AISQLQueryService {
             }
         }
     }
-    
-    /**
-     * 生成降级SQL（简单规则匹配）
-     */
-    private String generateFallbackSQL(String queryText, String tableName, String tables) {
-        log.info("使用降级方案生成SQL，queryText: {}, tableName: {}", queryText, tableName);
-        
-        if (tableName == null || tableName.trim().isEmpty()) {
-            tableName = "data_table"; // 默认表名
-        }
-        
-        String lowerQuery = queryText.toLowerCase();
-        String sql;
-        
-        // 简单的规则匹配生成SQL
-        if (lowerQuery.contains("全部") || lowerQuery.contains("所有") || lowerQuery.contains("全部数据")) {
-            sql = String.format("SELECT * FROM %s LIMIT 100", tableName);
-        } else if (lowerQuery.contains("数量") || lowerQuery.contains("统计") || lowerQuery.contains("计数")) {
-            sql = String.format("SELECT COUNT(*) as count FROM %s", tableName);
-        } else if (lowerQuery.contains("启用") || lowerQuery.contains("有效")) {
-            sql = String.format("SELECT * FROM %s WHERE status = 1 LIMIT 100", tableName);
-        } else if (lowerQuery.contains("禁用") || lowerQuery.contains("无效")) {
-            sql = String.format("SELECT * FROM %s WHERE status = 0 LIMIT 100", tableName);
-        } else if (lowerQuery.contains("最新") || lowerQuery.contains("最近")) {
-            sql = String.format("SELECT * FROM %s ORDER BY create_time DESC LIMIT 10", tableName);
-        } else {
-            // 默认查询
-            sql = String.format("SELECT * FROM %s LIMIT 10", tableName);
-        }
-        
-        log.info("降级方案生成的SQL: {}", sql);
-        
-        // 验证生成的SQL
-        validateSQL(sql);
-        
-        return sql;
-    }
 }

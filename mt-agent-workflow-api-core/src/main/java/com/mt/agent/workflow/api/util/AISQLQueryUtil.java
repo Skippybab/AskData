@@ -32,7 +32,6 @@ public class AISQLQueryUtil {
     @Autowired
     private BufferUtil bufferUtil;
 
-
     /**
      * SQL关键字集合，这些关键字不应该被反引号包裹
      */

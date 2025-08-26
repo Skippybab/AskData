@@ -189,41 +189,9 @@ CREATE TABLE `sql_execution` (
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='SQL执行记录表';
 
--- ----------------------------
--- Table structure for db_config_acl
--- ----------------------------
-DROP TABLE IF EXISTS `db_config_acl`;
-CREATE TABLE `db_config_acl` (
-  `id` bigint NOT NULL AUTO_INCREMENT,
-  `tenant_id` bigint DEFAULT NULL COMMENT '租户ID',
-  `db_config_id` bigint NOT NULL COMMENT '数据库配置ID',
-  `subject_type` int NOT NULL COMMENT '授权主体类型（1用户 2角色）',
-  `subject_id` bigint NOT NULL COMMENT '授权主体ID',
-  `perm_use` int DEFAULT '0' COMMENT '使用权限（0禁止 1允许）',
-  `perm_manage` int DEFAULT '0' COMMENT '管理权限（0禁止 1允许）',
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `uk_db_subject` (`db_config_id`,`subject_type`,`subject_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='数据库配置访问控制表';
 
--- ----------------------------
--- Table structure for table_permission
--- ----------------------------
-DROP TABLE IF EXISTS `table_permission`;
-CREATE TABLE `table_permission` (
-  `id` bigint NOT NULL AUTO_INCREMENT COMMENT '权限ID',
-  `tenant_id` bigint DEFAULT '0' COMMENT '租户ID',
-  `db_config_id` bigint NOT NULL COMMENT '数据库配置ID',
-  `table_name` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '表名',
-  `user_id` bigint NOT NULL COMMENT '用户ID',
-  `permission_type` int NOT NULL DEFAULT '1' COMMENT '权限类型：1-查询，2-修改，3-删除',
-  `enabled` tinyint(1) DEFAULT '1' COMMENT '是否启用：0-禁用，1-启用',
-  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-  `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `uk_user_table` (`user_id`,`db_config_id`,`table_name`,`permission_type`),
-  KEY `idx_db_config` (`db_config_id`),
-  KEY `idx_user_id` (`user_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='表权限控制表';
+
+
 
 -- ----------------------------
 -- Table structure for sql_guard_policy
