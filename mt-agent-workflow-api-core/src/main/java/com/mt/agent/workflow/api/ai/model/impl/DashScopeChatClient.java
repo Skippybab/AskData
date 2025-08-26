@@ -251,7 +251,7 @@ public class DashScopeChatClient {
                     .content(userContent)
                     .build();
 
-            log.debug("选用模型: {}", aliModelType.getCode());
+//            log.debug("选用模型: {}", aliModelType.getCode());
             // log.debug("API密钥前缀: {}", apiKey.substring(0, Math.min(5, apiKey.length())));
 
             GenerationParam paramBuilder = GenerationParam.builder()
@@ -301,8 +301,8 @@ public class DashScopeChatClient {
             // 验证所有其他能力配置
             validateCapabilities();
 
-            log.debug("模型调用 - 模型: {},温度: {},TopP: {},TopK: {},是否思考: {},是否增量输出: {}", aliModelType.getCode(), temperature,
-                    topP, topK, enableThinking, incrementalOutput);
+//            log.debug("模型调用 - 模型: {},温度: {},TopP: {},TopK: {},是否思考: {},是否增量输出: {}", aliModelType.getCode(), temperature,
+//                    topP, topK, enableThinking, incrementalOutput);
             // log.debug("发送消息：\n{}", userContent);
 
             try {

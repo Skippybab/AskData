@@ -315,7 +315,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, nextTick, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 
 // 数据
@@ -333,6 +333,7 @@ const currentSession = ref(null)
 const isLoading = ref(false)
 const loadingText = ref('正在思考')
 const showHistory = ref(false)
+let loadingInterval = null // 追踪loading文本更新的interval
 
 // 示例问题
 const quickExamples = ref([
@@ -354,6 +355,11 @@ const currentTableInfo = computed(() => {
 onMounted(() => {
   loadDatabases()
   loadSessionFromStorage()
+})
+
+// 组件卸载时清理interval
+onUnmounted(() => {
+  clearLoadingInterval()
 })
 
 // 监听数据库变化
@@ -503,7 +509,13 @@ const sendMessage = async () => {
   updateLoadingText()
   
   try {
-    const response = await fetch('/api/chat/send', {
+    // 创建超时控制
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => {
+      controller.abort()
+    }, 300000) // 5分钟超时
+
+    const response = await fetch('/api/data-question/ask', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${localStorage.getItem('token')}`,
@@ -514,117 +526,200 @@ const sendMessage = async () => {
         question: userMessage,
         dbConfigId: selectedDatabase.value,
         tableId: selectedTable.value
-      })
+      }),
+      signal: controller.signal
     })
     
+    // 清除超时定时器
+    clearTimeout(timeoutId)
+    
     if (!response.ok) {
-      throw new Error('请求失败')
+      const errorText = await response.text()
+      console.error('服务器错误响应:', errorText)
+      throw new Error(`HTTP error! status: ${response.status}`)
     }
     
-    // 读取SSE响应
-    const text = await response.text()
-    console.log('收到响应:', text)
+    // 直接解析JSON响应（后端使用阻塞式响应）
+    let responseText = await response.text()
+    console.log('🔍 [前端调试] 收到后端响应, 长度:', responseText.length)
+    console.log('🔍 [前端调试] 响应内容前500字符:', responseText.substring(0, Math.min(500, responseText.length)))
     
-    // 解析SSE格式的数据
-    const lines = text.split('\n')
+    // 如果响应为空，显示错误
+    if (!responseText || responseText.trim() === '') {
+      console.warn('🔍 [前端调试] 后端响应为空')
+      throw new Error('服务器返回了空响应')
+    }
     
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i].trim()
-      if (line.startsWith('event:')) {
-        const eventType = line.substring(6).trim()
-        const nextLine = lines[i + 1]
-        
-        if (nextLine && nextLine.startsWith('data:')) {
-          const dataStr = nextLine.substring(5).trim()
-          try {
-            const data = JSON.parse(dataStr)
-            
-            if (eventType === 'llm_token') {
-              if (data.type === 'thinking') {
-                aiMessage.thinking = data.content
-              } else if (data.type === 'sql_result') {
-                handleSqlResult(data, aiMessage)
-              }
-            } else if (eventType === 'error') {
-              aiMessage.error = data.error
-            } else if (eventType === 'done') {
-              console.log('处理完成')
-            }
-          } catch (e) {
-            console.error('解析数据失败:', e, dataStr)
+    // 解析JSON格式的响应
+    let responseData
+    try {
+      responseData = JSON.parse(responseText)
+      console.log('🔍 [前端调试] JSON解析成功:', responseData)
+    } catch (e) {
+      console.error('🔍 [前端调试] JSON解析失败:', e, '原始响应:', responseText)
+      throw new Error('响应格式错误')
+    }
+    
+    // 检查业务响应状态
+    if (responseData.code !== 200) {
+      console.error('🔍 [前端调试] 业务错误:', responseData.message)
+      throw new Error(responseData.message || '处理失败')
+    }
+    
+    const data = responseData.data
+    if (!data) {
+      throw new Error('响应数据为空')
+    }
+    
+    // 检查数据是否成功
+    if (!data.success) {
+      throw new Error(data.error || '处理失败')
+    }
+    
+    // 提取响应数据
+    const thinkingContent = data.thinking || ''
+    const pythonCode = data.pythonCode || ''
+    const sqlResult = data.result || ''
+    const resultType = data.resultType || 'text'
+    const duration = data.duration || 0
+    
+    console.log('🔍 [前端调试] 解析完成 - 思考内容长度:', thinkingContent.length, 'SQL结果长度:', sqlResult.length, '结果类型:', resultType)
+    
+    // 更新AI消息内容
+    aiMessage.thinking = thinkingContent
+    aiMessage.pythonCode = pythonCode
+    aiMessage.content = sqlResult || thinkingContent || '处理完成'
+    
+    // 解析和设置查询结果
+    if (sqlResult) {
+      try {
+        // 尝试解析结构化数据
+        if (resultType === 'table' && sqlResult.includes('[{') && sqlResult.includes('}]')) {
+          // 提取JSON数组部分
+          const jsonStart = sqlResult.indexOf('[{')
+          const jsonEnd = sqlResult.lastIndexOf('}]') + 2
+          if (jsonStart >= 0 && jsonEnd > jsonStart) {
+            const jsonStr = sqlResult.substring(jsonStart, jsonEnd)
+            const tableData = JSON.parse(jsonStr)
+            aiMessage.result = tableData
+            aiMessage.resultType = 'table'
+            aiMessage.resultInfo = `共 ${tableData.length} 条记录`
+            console.log('🔍 [前端调试] 解析表格数据成功，记录数:', tableData.length)
+          } else {
+            aiMessage.result = sqlResult
+            aiMessage.resultType = 'text'
           }
+        } else if (resultType === 'single') {
+          aiMessage.result = sqlResult
+          aiMessage.resultType = 'single'
+        } else {
+          aiMessage.result = sqlResult
+          aiMessage.resultType = 'text'
         }
+      } catch (e) {
+        console.warn('🔍 [前端调试] 解析结果数据失败:', e)
+        aiMessage.result = sqlResult
+        aiMessage.resultType = 'text'
       }
     }
     
+    console.log('🔍 [前端调试] AI消息更新完成:', {
+      hasThinking: !!aiMessage.thinking,
+      hasPythonCode: !!aiMessage.pythonCode,
+      hasResult: !!aiMessage.result,
+      resultType: aiMessage.resultType
+    })
+    
   } catch (error) {
-    console.error('查询失败:', error)
-    aiMessage.error = '查询失败: ' + error.message
+    console.error('🔍 [前端调试] 查询失败:', error)
+    
+    // 根据错误类型显示不同的错误信息
+    if (error.name === 'AbortError') {
+      aiMessage.error = '请求超时，请稍后重试或联系管理员'
+    } else if (error.name === 'TypeError' && error.message.includes('fetch')) {
+      aiMessage.error = '网络连接失败，请检查网络连接'
+    } else {
+      aiMessage.error = error.message || '查询失败，请重试'
+    }
+    
+    // 移除消息内容，只保留错误信息
+    aiMessage.content = ''
+    aiMessage.thinking = ''
+    aiMessage.pythonCode = ''
+    aiMessage.result = null
+    
   } finally {
-    isLoading.value = false
+    // 确保状态清理
+    clearLoadingInterval() // 先清除interval
+    isLoading.value = false // 再设置loading状态
     scrollToBottom()
   }
 }
 
-const handleStreamEvent = (event, aiMessage) => {
-  switch (event.type) {
-    case 'thinking':
-      aiMessage.thinking += event.content
-      break
-    case 'python_code':
-      aiMessage.pythonCode += event.content
-      break
-    case 'sql':
-      aiMessage.sql += event.content
-      break
-    case 'sql_result':
-    case 'python_result':
-      // 解析结果
-      if (event.parsedData) {
-        try {
-          const data = JSON.parse(event.parsedData)
-          aiMessage.result = data
-          
-          // 判断结果类型
-          if (Array.isArray(data) && data.length > 0) {
+// handleSqlResult函数，用于处理SQL结果数据
+const handleSqlResult = (data, aiMessage) => {
+  try {
+    if (data.content) {
+      aiMessage.result = data.content
+      
+      // 尝试解析结构化数据
+      if (data.content.includes('[{') && data.content.includes('}]')) {
+        const jsonStart = data.content.indexOf('[{')
+        const jsonEnd = data.content.lastIndexOf('}]') + 2
+        if (jsonStart >= 0 && jsonEnd > jsonStart) {
+          const jsonStr = data.content.substring(jsonStart, jsonEnd)
+          try {
+            const tableData = JSON.parse(jsonStr)
+            aiMessage.result = tableData
             aiMessage.resultType = 'table'
-            aiMessage.resultInfo = `共 ${data.length} 条记录`
-          } else if (typeof data === 'object' && !Array.isArray(data)) {
-            aiMessage.resultType = 'single'
-            aiMessage.variableName = event.variableName
-          } else {
-            aiMessage.resultType = 'text'
+            aiMessage.resultInfo = `共 ${tableData.length} 条记录`
+            return
+          } catch (e) {
+            console.warn('解析表格数据失败:', e)
           }
-        } catch (e) {
-          aiMessage.result = event.content
-          aiMessage.resultType = 'text'
         }
-      } else {
-        aiMessage.result = event.content
-        aiMessage.resultType = 'text'
       }
-      break
-    case 'error':
-      aiMessage.error = event.content
-      break
+      
+      // 默认为文本结果
+      aiMessage.resultType = 'text'
+    }
+  } catch (error) {
+    console.error('处理SQL结果失败:', error)
+    aiMessage.error = '处理查询结果失败'
   }
-  
-  // 滚动到底部
-  nextTick(() => scrollToBottom())
 }
 
 const updateLoadingText = () => {
   const texts = ['正在思考', '分析问题中', '生成查询', '执行中', '处理结果']
   let index = 0
   
-  const interval = setInterval(() => {
+  // 清除之前的interval
+  if (loadingInterval) {
+    clearInterval(loadingInterval)
+    loadingInterval = null
+  }
+  
+  // 立即设置初始文本
+  loadingText.value = texts[0]
+  
+  // 创建新的interval
+  loadingInterval = setInterval(() => {
     if (!isLoading.value) {
-      clearInterval(interval)
+      clearInterval(loadingInterval)
+      loadingInterval = null
       return
     }
-    loadingText.value = texts[index % texts.length]
-    index++
+    index = (index + 1) % texts.length
+    loadingText.value = texts[index]
   }, 1000)
+}
+
+// 清除loading interval的辅助函数
+const clearLoadingInterval = () => {
+  if (loadingInterval) {
+    clearInterval(loadingInterval)
+    loadingInterval = null
+  }
 }
 
 const askQuestion = (question) => {

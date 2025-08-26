@@ -254,7 +254,7 @@ public class BufferUtil {
      */
     @SuppressWarnings("unchecked")
     public <T> T getField(String userId, String field) {
-        log.debug("获取自定义域: 用户id:{}, {}", userId, field);
+//        log.debug("获取自定义域: 用户id:{}, {}", userId, field);
         String fieldKey = getUserBufferKeyPrefix(userId) + field;
         return (T) redissonClient.getBucket(fieldKey).get();
     }

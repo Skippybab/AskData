@@ -4,7 +4,9 @@ import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Locale;
 import java.util.Set;
+import lombok.extern.slf4j.Slf4j;
 
+@Slf4j
 public class SqlParserUtil {
     private static final Set<String> DML_DDL = new HashSet<>(Arrays.asList(
             "INSERT", "UPDATE", "DELETE", "MERGE", "REPLACE",
@@ -21,12 +23,23 @@ public class SqlParserUtil {
     }
 
     public static String ensureLimit(String sql, int maxRows) {
+        log.info("🔍 [SQL解析] 开始处理LIMIT，原始SQL: {}", sql);
+        log.info("🔍 [SQL解析] 最大行数限制: {}", maxRows);
+        
         String s = sql.trim();
         String upper = s.toUpperCase(Locale.ROOT);
+        
+        log.info("🔍 [SQL解析] 处理后的SQL: {}", s);
+        log.info("🔍 [SQL解析] 大写SQL: {}", upper);
+        
         if (upper.contains(" LIMIT ")) {
             return s;
         }
-        return s + " LIMIT " + Math.max(1, maxRows);
+        
+        String result = s + " LIMIT " + Math.max(1, maxRows);
+        log.info("🔍 [SQL解析] 添加LIMIT子句，最终SQL: {}", result);
+        
+        return result;
     }
 
     private static String stripComments(String sql) {

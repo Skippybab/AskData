@@ -29,10 +29,7 @@ public interface ChatService {
      */
     List<ChatMessage> getSessionMessages(Long sessionId, Long userId);
     
-    /**
-     * 发送消息并处理
-     */
-    void sendMessage(Long sessionId, Long userId, String content, Long dbConfigId, SseEmitter emitter);
+
     
     /**
      * 获取用户可用的工具列表
@@ -54,8 +51,5 @@ public interface ChatService {
      */
     boolean deleteSession(Long userId, Long sessionId);
     
-    /**
-     * 发送消息并处理（同步版本）
-     */
-    String sendMessageSync(Long sessionId, Long userId, String content, Long dbConfigId);
+
 }

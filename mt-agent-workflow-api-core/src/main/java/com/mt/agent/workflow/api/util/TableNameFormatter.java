@@ -110,7 +110,7 @@ public class TableNameFormatter {
 
                     hasFields = true;
 
-                    log.debug("解析字段: {} -> {}", fieldName, fieldDescription);
+//                    log.debug("解析字段: {} -> {}", fieldName, fieldDescription);
                 }
             }
 
@@ -239,7 +239,7 @@ public class TableNameFormatter {
 
                     hasFields = true;
 
-                    log.debug("解析字段(执行器格式): {} -> {}, {}, {}", fieldName, dataType, comment, "字段描述");
+//                    log.debug("解析字段(执行器格式): {} -> {}, {}, {}", fieldName, dataType, comment, "字段描述");
                 }
             }
 

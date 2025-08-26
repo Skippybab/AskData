@@ -39,18 +39,13 @@ public class AISQLQueryServiceImpl implements AISQLQueryService {
     public String generateSQL(String queryText, String tableName, String pythonCode, 
                             String historyStr, String question, String tables) {
         try {
-            log.info("开始生成SQL，queryText: {}, tableName: {}", queryText, tableName);
+//            log.info("开始生成SQL，queryText: {}, tableName: {}", queryText, tableName);
             return aisqlQueryUtil.genSQLCAICT(queryText,tableName, pythonCode, historyStr, question, tables);
 
         } catch (Exception e) {
             log.error("生成SQL失败: {}", e.getMessage(), e);
             throw new RuntimeException("生成SQL失败: " + e.getMessage());
         }
-    }
-    
-    @Override
-    public String generateSimpleSQL(String queryText, String tableName) {
-        return generateSQL(queryText, tableName, null, null, queryText, null);
     }
     
     /**
@@ -66,26 +61,9 @@ public class AISQLQueryServiceImpl implements AISQLQueryService {
         template = template.replace("{{py_codes}}", pythonCode != null ? pythonCode : "");
         template = template.replace("{{diag_history}}", historyStr != null ? historyStr : "");
         template = template.replace("{{question}}", question != null ? question : "");
-        template = template.replace("{{tableSchema}}", tables != null ? tables : getDefaultTableSchema());
+        template = template.replace("{{tableSchema}}", tables != null ? tables : "");
         
         return template;
-    }
-    
-    /**
-     * 获取默认表结构
-     */
-    private String getDefaultTableSchema() {
-        // TODO: 从数据库动态获取表结构
-        return """
-            表名: data_table
-            字段:
-            - id: BIGINT, 主键
-            - name: VARCHAR(100), 名称
-            - value: DECIMAL(10,2), 数值
-            - category: VARCHAR(50), 分类
-            - created_time: DATETIME, 创建时间
-            - status: INT, 状态(1-正常,0-禁用)
-            """;
     }
     
     /**

@@ -117,13 +117,13 @@ public class PythonDirectExecutorService implements PythonExecutorService {
 
     @Override
     public Object executePythonCodeWithResult(String pythonCode, HashMap<String, Object> paramMap, String userId) {
-        log.info("🔍 [Python执行] 开始执行Python代码并返回结果（旧版本接口）, userId: {}", userId);
+//        log.info("🔍 [Python执行] 开始执行Python代码并返回结果, userId: {}", userId);
         Path tempDir = null;
         Process pythonProcess = null;
         pythonErrorOutput = "";
 
         try {
-            log.info("准备Python执行环境...");
+//            log.info("准备Python执行环境...");
 
             // 1. 创建临时执行环境
             tempDir = createPythonEnvironment(paramMap);
@@ -131,7 +131,7 @@ public class PythonDirectExecutorService implements PythonExecutorService {
             // 2. 生成完整的main.py文件
             createMainPythonFile(tempDir, pythonCode);
 
-            log.info("启动Python进程执行代码...");
+//            log.info("启动Python进程执行代码...");
 
             // 3. 启动Python进程
             pythonProcess = startPythonProcess(tempDir);
@@ -151,7 +151,7 @@ public class PythonDirectExecutorService implements PythonExecutorService {
             }
 
             // 6. 获取执行结果
-            String result = bufferUtil.getField(userId, "execution_result");
+            String result = bufferUtil.getField(userId, "result");
             log.info("Python代码执行完成，结果: {}", result != null ? result.length() : 0);
 
             return result;
@@ -169,11 +169,11 @@ public class PythonDirectExecutorService implements PythonExecutorService {
     }
 
     public PythonExecutionResult executePythonCodeWithResult(Long messageId, Long dbConfigId, Long userId) {
-        log.info("🔍 [Python执行] 开始执行Python代码, messageId: {}, dbConfigId: {}", messageId, dbConfigId);
+//        log.info("🔍 [Python执行] 开始执行Python代码, messageId: {}, dbConfigId: {}", messageId, dbConfigId);
         
         // 验证dbConfigId是否有效
         if (dbConfigId == null) {
-            log.error("🔍 [Python执行] dbConfigId为null, messageId: {}", messageId);
+//            log.error("🔍 [Python执行] dbConfigId为null, messageId: {}", messageId);
             return PythonExecutionResult.failure("数据库配置ID为空", "INVALID_DB_CONFIG");
         }
         
@@ -185,13 +185,13 @@ public class PythonDirectExecutorService implements PythonExecutorService {
             // 1. 获取消息和Python代码
             ChatMessage message = messageMapper.selectById(messageId);
             if (message == null) {
-                log.error("🔍 [Python执行] 未找到消息, messageId: {}", messageId);
+//                log.error("🔍 [Python执行] 未找到消息, messageId: {}", messageId);
                 return PythonExecutionResult.failure("未找到消息", "MESSAGE_NOT_FOUND");
             }
 
             String pythonCode = message.getPythonCode();
             if (pythonCode == null || pythonCode.trim().isEmpty()) {
-                log.error("🔍 [Python执行] Python代码为空, messageId: {}", messageId);
+//                log.error("🔍 [Python执行] Python代码为空, messageId: {}", messageId);
                 return PythonExecutionResult.failure("Python代码为空", "EMPTY_CODE");
             }
 
@@ -202,14 +202,14 @@ public class PythonDirectExecutorService implements PythonExecutorService {
             
             // 将dbConfigId存储到缓冲区，供后续使用
             bufferUtil.setField(userId.toString(),"dbConfigId", dbConfigId.toString(), -1, TimeUnit.DAYS);
-            log.info("🔍 [Python执行] 已将dbConfigId={}存储到用户{}的缓存中", dbConfigId, userId);
+//            log.info("🔍 [Python执行] 已将dbConfigId={}存储到用户{}的缓存中", dbConfigId, userId);
             
             tempDir = createPythonEnvironment(paramMap);
 
             // 3. 生成完整的main.py文件
             createMainPythonFile(tempDir, pythonCode);
 
-            log.info("🔍 [Python执行] 启动Python进程执行代码");
+//            log.info("🔍 [Python执行] 启动Python进程执行代码");
 
             // 4. 启动Python进程
             pythonProcess = startPythonProcess(tempDir);
@@ -220,12 +220,12 @@ public class PythonDirectExecutorService implements PythonExecutorService {
             // 6. 等待执行完成
             boolean finished = pythonProcess.waitFor(300, TimeUnit.SECONDS);
             if (!finished) {
-                log.error("🔍 [Python执行] Python代码执行超时（300秒）");
+//                log.error("🔍 [Python执行] Python代码执行超时（300秒）");
                 return PythonExecutionResult.failure("Python代码执行超时（300秒）", "TIMEOUT");
             }
 
             int exitCode = pythonProcess.exitValue();
-            log.info("🔍 [Python执行] Python进程执行完成, 退出码: {}", exitCode);
+//            log.info("🔍 [Python执行] Python进程执行完成, 退出码: {}", exitCode);
             
             if (exitCode != 0) {
                 // 根据错误输出和退出码分析异常类型
@@ -235,13 +235,21 @@ public class PythonDirectExecutorService implements PythonExecutorService {
             }
 
             // 7. 获取执行结果
-            String result = bufferUtil.getField(userId.toString(), "execution_result");
-            log.info("🔍 [Python执行] Python代码执行完成, 结果长度: {}", result != null ? result.length() : 0);
+            String result = bufferUtil.getField(userId.toString(), "result");
+//            String outputResult = bufferUtil.getOutputResult(userId.toString());
+            if (result != null && !result.trim().isEmpty()) {
+                log.info("🔍 [Python执行] 使用output_result结果: {}", result);
+            } else {
+                // 如果没有output_result，回退到execution_result
+                result = bufferUtil.getField(userId.toString(), "execution_result");
+                log.info("🔍 [Python执行] 使用execution_result结果: {}", result);
+            }
+//            log.info("🔍 [Python执行] Python代码执行完成, 结果长度: {}", result != null ? result.length() : 0);
 
             return PythonExecutionResult.success(result);
 
         } catch (Exception e) {
-            log.error("🔍 [Python执行] Python代码执行异常: {}", e.getMessage(), e);
+//            log.error("🔍 [Python执行] Python代码执行异常: {}", e.getMessage(), e);
             return PythonExecutionResult.failure("Python代码执行异常: " + e.getMessage(), "EXCEPTION");
         } finally {
             // 清理资源
@@ -268,7 +276,7 @@ public class PythonDirectExecutorService implements PythonExecutorService {
         String paramsJson = objectMapper.writeValueAsString(paramMap);
         Files.writeString(tempDir.resolve("params.json"), paramsJson, StandardCharsets.UTF_8);
 
-        log.info("Python执行环境创建完成: {}", tempDir);
+//        log.info("Python执行环境创建完成: {}", tempDir);
         return tempDir;
     }
 
@@ -495,7 +503,7 @@ public class PythonDirectExecutorService implements PythonExecutorService {
                 """;
 
         String finalCode = String.format(flexibleTemplate, escapedUserCode);
-        log.info("灵活执行代码：" + finalCode);
+//        log.info("灵活执行代码：" + finalCode);
 
         Files.writeString(tempDir.resolve("main.py"), finalCode, StandardCharsets.UTF_8);
     }
@@ -570,7 +578,7 @@ public class PythonDirectExecutorService implements PythonExecutorService {
                 String functionName = extractFunctionName(trimmedLine);
                 if (functionName != null && !functionName.isEmpty()) {
                     definedFunctions.add(functionName);
-                    log.info("🔍 [函数检测] 检测到函数定义: {}", functionName);
+//                    log.info("🔍 [函数检测] 检测到函数定义: {}", functionName);
                 }
             }
         }
@@ -800,7 +808,7 @@ public class PythonDirectExecutorService implements PythonExecutorService {
                 }
             }
         } catch (Exception e) {
-            log.error("处理Python输出失败: {}", line, e);
+//            log.error("处理Python输出失败: {}", line, e);
             pythonErrorOutput += "处理输出异常: " + line + "\n";
         }
     }
@@ -907,7 +915,8 @@ public class PythonDirectExecutorService implements PythonExecutorService {
 
             case "output_result":
                 bufferUtil.saveOutputResult(args.get(0), userId);
-                return null;
+//                return null;
+                return args.get(0);
 
             default:
                 throw new IllegalArgumentException("未知的函数: " + functionName);
@@ -921,18 +930,19 @@ public class PythonDirectExecutorService implements PythonExecutorService {
             String query = (String) args.get(0);
             String tableName = args.size() > 1 ? (String) args.get(1) : null;
             
-            log.info("🔍 [SQL生成] 开始生成SQL: query={}, tableName={}, userID={}", query, tableName,userId);
+//            log.info("🔍 [SQL生成] 开始生成SQL: query={}, tableName={}, userID={}", query, tableName,userId);
             
             // 获取数据库配置ID用于获取表结构
             Long dbConfigId = getDbConfigIdFromUserId(userId);
             if (dbConfigId == null) {
-                log.warn("🔍 [SQL生成] 无法获取数据库配置ID，使用简单SQL生成");
-                return aiSqlQueryService.generateSimpleSQL(query, tableName);
+                log.warn("🔍 [SQL生成] 无法获取数据库配置ID");
             }
             
             // 获取当前会话的上下文信息
-            String pythonCode = bufferUtil.getPythonCode(userId);
-            log.info("🔍 [SQL生成] 开始生成SQL: pythonCode={}, userID={}", pythonCode, userId);
+            String userIdentifier = "user_" + userId;
+            log.debug("🔍 [SQL生成] 获取python代码的用户id: {}", userId);
+            String pythonCode = bufferUtil.getPythonCode(userIdentifier);
+//            log.info("🔍 [SQL生成] 开始生成SQL: pythonCode={}, userID={}", pythonCode, userId);
             String historyStr = getHistoryFromUserId(userId);
             String question = getCurrentQuestionFromUserId(userId);
             
@@ -943,7 +953,7 @@ public class PythonDirectExecutorService implements PythonExecutorService {
             String generatedSQL = aiSqlQueryService.generateSQL(
                 query, tableName, pythonCode, historyStr, question, tableSchema);
             
-            log.info("🔍 [SQL生成] AI生成SQL成功: {}", generatedSQL);
+//            log.info("🔍 [SQL生成] AI生成SQL成功: {}", generatedSQL);
             return generatedSQL;
             
         } catch (Exception e) {
@@ -956,22 +966,6 @@ public class PythonDirectExecutorService implements PythonExecutorService {
             }
             return "SELECT 1";
         }
-    }
-
-    /**
-     * 获取当前Python代码上下文
-     */
-    private String getPythonCodeFromUserId(String userId) {
-        try {
-            // 从消息记录中获取Python代码
-            ChatMessage message = messageMapper.selectById(Long.parseLong(userId));
-            if (message != null && message.getPythonCode() != null) {
-                return message.getPythonCode();
-            }
-        } catch (Exception e) {
-            log.debug("获取Python代码失败: {}", e.getMessage());
-        }
-        return "";
     }
 
     /**
@@ -1008,13 +1002,13 @@ public class PythonDirectExecutorService implements PythonExecutorService {
      */
     private String getTableSchemaInfo(Long dbConfigId, String tableName) {
         try {
-            log.info("🔍 [SQL生成] 获取表结构信息: dbConfigId={}, tableName={}", dbConfigId, tableName);
+//            log.info("🔍 [SQL生成] 获取表结构信息: dbConfigId={}, tableName={}", dbConfigId, tableName);
             
             // 优先从缓存中获取TableSchema
             String cachedTableSchema = bufferUtil.getField("1", "TableSchema_result");
-            log.info("tableName={}", cachedTableSchema);
+//            log.info("tableName={}", cachedTableSchema);
             if (cachedTableSchema != null && !cachedTableSchema.trim().isEmpty()) {
-                log.info("🔍 [SQL生成] 成功从缓存获取TableSchema，长度: {}", cachedTableSchema.length());
+//                log.info("🔍 [SQL生成] 成功从缓存获取TableSchema，长度: {}", cachedTableSchema.length());
                 return cachedTableSchema;
             } else {
                 log.warn("🔍 [SQL生成] 缓存中未找到TableSchema，回退到SchemaContextService");
@@ -1054,7 +1048,7 @@ public class PythonDirectExecutorService implements PythonExecutorService {
     private Object execSQL(List<Object> args, String userId) {
         try {
             String sql = (String) args.get(0);
-            log.info("🔍 [SQL执行] 执行SQL查询: {}", sql);
+//            log.info("🔍 [SQL执行] 执行SQL查询: {}", sql);
 
             // 从参数中获取数据库配置ID
             Long dbConfigId = getDbConfigIdFromUserId(userId);
@@ -1064,9 +1058,9 @@ public class PythonDirectExecutorService implements PythonExecutorService {
             }
 
             // 使用SqlExecutionService执行SQL
-            log.info("🔍 [SQL执行] 调用SqlExecutionService执行SQL, dbConfigId: {}, sql: {}", dbConfigId, sql);
+//            log.info("🔍 [SQL执行] 调用SqlExecutionService执行SQL, dbConfigId: {}, sql: {}", dbConfigId, sql);
             SqlExecutionService.SqlExecutionResult result = sqlExecutionService.executeWithResult(dbConfigId, sql);
-            log.info("🔍 [SQL执行] SqlExecutionService调用完成");
+//            log.info("🔍 [SQL执行] SqlExecutionService调用完成");
             
             if (result.queryResult != null && result.queryResult.rows != null) {
                 log.info("🔍 [SQL执行] SQL执行成功，返回{}行数据", result.queryResult.rows.size());
@@ -1092,13 +1086,13 @@ public class PythonDirectExecutorService implements PythonExecutorService {
      */
     private Long getDbConfigIdFromUserId(String userId) {
         try {
-            log.info("🔍 [SQL执行] 尝试从缓存获取用户{}的数据库配置ID", userId);
+//            log.info("🔍 [SQL执行] 尝试从缓存获取用户{}的数据库配置ID", userId);
             
             // 尝试从缓冲区获取dbConfigId参数
             String dbConfigIdStr = bufferUtil.getField(userId, "dbConfigId");
             if (dbConfigIdStr != null) {
                 Long dbConfigId = Long.parseLong(dbConfigIdStr);
-                log.info("🔍 [SQL执行] 成功从缓存获取数据库配置ID: {}", dbConfigId);
+//                log.info("🔍 [SQL执行] 成功从缓存获取数据库配置ID: {}", dbConfigId);
                 return dbConfigId;
             }
             

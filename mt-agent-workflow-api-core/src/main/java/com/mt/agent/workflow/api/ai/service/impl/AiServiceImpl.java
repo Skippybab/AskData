@@ -70,7 +70,7 @@ public class AiServiceImpl implements AiService {
 
     @Override
     public Flowable<String> chatStream(String message, RequestConfig config) {
-        log.debug("执行流式调用 - 模型: {}, 消息: {}", config.getAliModelType(), message);
+//        log.debug("执行流式调用 - 模型: {}, 消息: {}", config.getAliModelType(), message);
         try {
             // 确保增量输出开启
             config.setIncrementalOutput(true);

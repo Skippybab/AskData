@@ -49,53 +49,7 @@ public class ChatOrchestratorServiceImpl implements ChatOrchestratorService {
         }
     }
 
-    public void processDataQuestion(Long sessionId, Long userId, String question, Long dbConfigId, Long tableId, SseEmitter emitter) {
-        log.info("开始处理数据问答, sessionId: {}, userId: {}, dbConfigId: {}", sessionId, userId, dbConfigId);
 
-        try {
-            List<ChatMessage> historyMessages = chatService.getSessionMessages(sessionId, userId);
-            saveUserMessage(sessionId, userId, question);
-
-            String allTableNames;
-            if (tableId != null) {
-                // 如果指定了表ID，获取单个表的信息
-                allTableNames = tableInfoService.getStandardTableNameFormat(dbConfigId, tableId, userId);
-
-            } else {
-                // 如果没有指定表ID，获取所有启用的表信息（格式化后用于Dify接口）
-                allTableNames = tableInfoService.getEnabledTablesFormattedForDify(dbConfigId, userId);
-            }
-
-            if (allTableNames == null || allTableNames.isBlank()) {
-                sendError(emitter, "没有找到可用的数据表。请先在数据管理中配置并启用表。");
-                return;
-            }
-
-            List<Map<String, String>> history = historyMessages.stream()
-                .map(msg -> Map.of("role", msg.getRole(), "content", msg.getContent()))
-                .collect(Collectors.toList());
-
-            String lastReply = historyMessages.stream()
-                .filter(m -> "assistant".equals(m.getRole()))
-                .map(ChatMessage::getContent)
-                .reduce((first, second) -> second)
-                .orElse(null);
-
-            String userIdentifier = "user_" + userId;
-
-            difyService.blockingChat(allTableNames, question, history, lastReply, userIdentifier)
-                .subscribe(
-                    responseData -> handleDifyResponse(responseData, sessionId, userId, dbConfigId, emitter),
-                    error -> {
-                        log.error("Dify API调用失败: {}", error.getMessage(), error);
-                        sendError(emitter, "调用大模型服务失败: " + error.getMessage());
-                    }
-                );
-        } catch (Exception e) {
-            log.error("处理数据问答的同步部分时发生严重错误: {}", e.getMessage(), e);
-            sendError(emitter, "处理请求时发生内部错误: " + e.getMessage());
-        }
-    }
 
     private void handleDifyResponse(String responseData, Long sessionId, Long userId, Long dbConfigId, SseEmitter emitter) {
         try {
@@ -269,12 +223,12 @@ public class ChatOrchestratorServiceImpl implements ChatOrchestratorService {
     private void sendSseMessage(SseEmitter emitter, EventType eventType, Object data) {
         try {
             String jsonData = objectMapper.writeValueAsString(data);
-            log.debug("🔍 [SSE] 发送消息, event: {}, data长度: {}, data内容: {}", 
-                eventType.value, jsonData.length(), jsonData.substring(0, Math.min(200, jsonData.length())));
+//            log.debug("🔍 [SSE] 发送消息, event: {}, data长度: {}, data内容: {}",
+//            eventType.value, jsonData.length(), jsonData.substring(0, Math.min(200, jsonData.length()));
             emitter.send(SseEmitter.event().name(eventType.value).data(jsonData));
-            log.info("🔍 [SSE] 消息发送成功, event: {}, data长度: {}", eventType.value, jsonData.length());
+//            log.info("🔍 [SSE] 消息发送成功, event: {}, data长度: {}", eventType.value, jsonData.length());
         } catch (Exception e) {
-            log.error("🔍 [SSE] 发送SSE消息失败: event={}, data={}, error={}", eventType, data, e.getMessage(), e);
+//            log.error("🔍 [SSE] 发送SSE消息失败: event={}, data={}, error={}", eventType, data, e.getMessage(), e);
         }
     }
 
@@ -290,9 +244,7 @@ public class ChatOrchestratorServiceImpl implements ChatOrchestratorService {
     @Override
     @Transactional
     public DataQuestionResponse processDataQuestionSync(Long sessionId, Long userId, String question, Long dbConfigId, Long tableId) {
-        log.info("🔍 [数据问答] 开始处理数据问答, sessionId: {}, userId: {}, dbConfigId: {}, tableId: {}", sessionId, userId, dbConfigId, tableId);
-        log.info("🔍 [数据问答] 用户问题: {}", question);
-        
+
         // 设置整体超时时间（4分钟，比前端超时时间短）
         long startTime = System.currentTimeMillis();
         long timeoutMs = 4 * 60 * 1000; // 4分钟
@@ -301,7 +253,7 @@ public class ChatOrchestratorServiceImpl implements ChatOrchestratorService {
         
         try {
             // 1. 保存用户消息
-            log.info("🔍 [数据问答] 步骤1: 保存用户消息");
+//            log.info("🔍 [数据问答] 步骤1: 保存用户消息");
             ChatMessage userMessage = saveUserMessage(sessionId, userId, question);
             log.info("🔍 [数据问答] 用户消息保存成功, messageId: {}", userMessage.getId());
             
@@ -323,11 +275,11 @@ public class ChatOrchestratorServiceImpl implements ChatOrchestratorService {
                 response.setDuration(System.currentTimeMillis() - startTime);
                 return response;
             }
-            log.info("🔍 [数据问答] 表信息获取成功, 长度: {}", tableInfo.length());
-            log.debug("🔍 [数据问答] 表信息内容: {}", tableInfo.substring(0, Math.min(200, tableInfo.length())) + "...");
+//            log.info("🔍 [数据问答] 表信息获取成功, 长度: {}", tableInfo.length());
+//            log.debug("🔍 [数据问答] 表信息内容: {}", tableInfo.substring(0, Math.min(200, tableInfo.length())) + "...");
             
             // 3. 调用Dify服务
-            log.info("🔍 [数据问答] 步骤3: 调用Dify服务");
+//            log.info("🔍 [数据问答] 步骤3: 调用Dify服务");
             
             // 检查超时
             if (System.currentTimeMillis() - startTime > timeoutMs) {
@@ -342,7 +294,7 @@ public class ChatOrchestratorServiceImpl implements ChatOrchestratorService {
             String lastReply = null;
             String userIdentifier = "user_" + userId;
             
-            log.info("🔍 [数据问答] Dify调用参数: userIdentifier={}, historySize={}, lastReply={}", userIdentifier, history.size(), lastReply);
+//            log.info("🔍 [数据问答] Dify调用参数: userIdentifier={}, historySize={}, lastReply={}", userIdentifier, history.size(), lastReply);
             String difyResponse = difyService.blockingChat(tableInfo, question, history, lastReply, userIdentifier)
                 .block(); // 阻塞等待响应
             if (difyResponse == null || difyResponse.trim().isEmpty()) {
@@ -352,11 +304,11 @@ public class ChatOrchestratorServiceImpl implements ChatOrchestratorService {
                 response.setDuration(System.currentTimeMillis() - startTime);
                 return response;
             }
-            log.info("🔍 [数据问答] Dify响应接收成功, 长度: {}", difyResponse.length());
-            log.debug("🔍 [数据问答] Dify响应内容: {}", difyResponse.substring(0, Math.min(500, difyResponse.length())) + "...");
+//            log.info("🔍 [数据问答] Dify响应接收成功, 长度: {}", difyResponse.length());
+//            log.debug("🔍 [数据问答] Dify响应内容: {}", difyResponse.substring(0, Math.min(500, difyResponse.length())) + "...");
             
             // 4. 处理Dify响应
-            log.info("🔍 [数据问答] 步骤4: 处理Dify响应");
+//            log.info("🔍 [数据问答] 步骤4: 处理Dify响应");
             StringBuilder thinkingContent = new StringBuilder();
             StringBuilder pythonCode = new StringBuilder();
             
@@ -374,8 +326,8 @@ public class ChatOrchestratorServiceImpl implements ChatOrchestratorService {
                     if (thinkMatcher.find()) {
                         String thinking = thinkMatcher.group(1).trim();
                         thinkingContent.append(thinking);
-                        log.info("🔍 [数据问答] 提取到思考内容, 长度: {}", thinking.length());
-                        log.debug("🔍 [数据问答] 思考内容: {}", thinking.substring(0, Math.min(200, thinking.length())) + "...");
+//                        log.info("🔍 [数据问答] 提取到思考内容, 长度: {}", thinking.length());
+//                        log.debug("🔍 [数据问答] 思考内容: {}", thinking.substring(0, Math.min(200, thinking.length())) + "...");
                         // 设置思考内容到response对象
                         response.setThinking(thinking);
                     } else {
@@ -388,10 +340,11 @@ public class ChatOrchestratorServiceImpl implements ChatOrchestratorService {
                     if (codeMatcher.find()) {
                         String extractedCode = codeMatcher.group(1).trim();
                         pythonCode.append(extractedCode);
-                        log.info("🔍 [数据问答] 提取到Python代码, 长度: {}", extractedCode.length());
-                        log.debug("🔍 [数据问答] Python代码: {}", extractedCode);
+//                        log.info("🔍 [数据问答] 提取到Python代码, 长度: {}", extractedCode.length());
+//                        log.debug("🔍 [数据问答] Python代码: {}", extractedCode);
                         // 设置Python代码到response对象
                         response.setPythonCode(extractedCode);
+                        log.debug("🔍 [数据问答] 存储python代码的用户id: {}", userIdentifier);
                         bufferUtil.savePythonCode(userIdentifier, extractedCode);
                     } else {
                         log.warn("🔍 [数据问答] 未找到Python代码块");
@@ -406,17 +359,13 @@ public class ChatOrchestratorServiceImpl implements ChatOrchestratorService {
                 response.setDuration(System.currentTimeMillis() - startTime);
                 return response;
             }
-            
-            // 5. 保存初始助手消息
-            log.info("🔍 [数据问答] 步骤5: 保存初始助手消息");
-            log.info("🔍 [数据问答] 思考内容长度: {}, Python代码长度: {}", thinkingContent.length(), pythonCode.length());
+
             ChatMessage initialMessage = saveInitialAssistantMessage(sessionId, userId, thinkingContent.toString(), pythonCode.toString());
-            log.info("🔍 [数据问答] 初始助手消息保存成功, messageId: {}", initialMessage.getId());
             response.setMessageId(initialMessage.getId());
             
             // 6. 执行Python代码
             if (pythonCode.length() > 0) {
-                log.info("🔍 [数据问答] 步骤6: 执行Python代码");
+//                log.info("🔍 [数据问答] 步骤6: 执行Python代码");
                 
                 // 检查超时
                 if (System.currentTimeMillis() - startTime > timeoutMs) {
@@ -426,9 +375,6 @@ public class ChatOrchestratorServiceImpl implements ChatOrchestratorService {
                     response.setDuration(System.currentTimeMillis() - startTime);
                     return response;
                 }
-                
-                log.info("🔍 [数据问答] 开始执行Python代码, messageId: {}, dbConfigId: {}", initialMessage.getId(), dbConfigId);
-                
                 PythonExecutionResult result = pythonExecutorService.executePythonCodeWithResult(initialMessage.getId(), dbConfigId,userId);
                 
                 log.info("🔍 [数据问答] Python执行完成, 成功: {}, 数据长度: {}", result.isSuccess(), 

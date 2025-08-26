@@ -1,6 +1,5 @@
 package com.mt.agent.workflow.api.controller;
 
-import com.mt.agent.workflow.api.dto.DataQuestionRequest;
 import com.mt.agent.workflow.api.dto.DataQuestionResponse;
 import com.mt.agent.workflow.api.service.ChatOrchestratorService;
 import com.mt.agent.workflow.api.service.DbConfigService;
@@ -17,6 +16,7 @@ import java.util.List;
 import java.util.stream.Collectors;
 import com.mt.agent.workflow.api.entity.DbConfig;
 import com.mt.agent.workflow.api.entity.TableInfo;
+import com.mt.agent.workflow.api.bottomReply.service.BottomReplyService;
 
 /**
  * 数据问答控制器
@@ -39,6 +39,9 @@ public class DataQuestionController {
     
     @Autowired
     private BufferUtil bufferUtil;
+    
+    @Autowired
+    private BottomReplyService bottomReplyService;
 
     /**
      * 数据问答接口 - 阻塞式返回
@@ -50,6 +53,7 @@ public class DataQuestionController {
     public Result<DataQuestionResponse> askQuestion(@RequestBody Map<String, Object> requestBody,
                                                     HttpServletRequest request) {
         Long userId = 1L; // 使用默认用户ID
+        bufferUtil.clearOutputResultCache(userId.toString());
         try {
             // 解析请求参数
             Long sessionId = Long.valueOf(requestBody.get("sessionId").toString());
@@ -97,6 +101,28 @@ public class DataQuestionController {
             // 调用编排服务处理数据问答
             DataQuestionResponse response = orchestratorService.processDataQuestionSync(sessionId, userId, question, dbConfigId, tableId);
             
+            // 调用兜底回复服务
+            try {
+                // 准备兜底回复的参数
+                String dialogHistory = ""; // 暂时为空，后续可以从数据库获取
+                String executions = response.getResult() != null ? response.getResult() : "";
+                String taskName = "智能数据问答";
+                String bottomReplyResult = bottomReplyService.replyForExecution(question, dialogHistory, executions, taskName, userId.toString(), null);
+                log.info("📊 [数据问答] 兜底回复处理成功: {}", bottomReplyResult);
+
+                // 将兜底回复设置为主要的显示内容
+                if (bottomReplyResult != null && !bottomReplyResult.trim().isEmpty()) {
+                    response.setBottomReply(bottomReplyResult);
+                    // 将兜底回复内容设置为主要的result，这样前端会显示兜底回复而不是原始查询结果
+                    response.setResult(bottomReplyResult);
+                    response.setResultType("text");
+                }
+
+            } catch (Exception e) {
+                log.error("📊 [数据问答] 兜底回复处理失败: {}", e.getMessage());
+            }
+            
+            // 返回处理结果
             if (response.isSuccess()) {
                 log.info("📊 [数据问答] 数据问答处理成功");
                 return Result.success(response);

@@ -488,7 +488,7 @@ const createSession = async () => {
     currentSession.value = {
       id: result.data.id,
       name: result.data.sessionName,
-      databaseId: result.data.dbConfigId,
+      dbConfigId: result.data.dbConfigId,
       databaseName: db?.name,
       tools: availableTools.value.filter(t => sessionForm.value.tools.includes(t.id)),
       createTime: new Date(result.data.createdAtMs)
@@ -557,7 +557,7 @@ const sendMessage = async () => {
   
   // 发送请求
   isLoading.value = true
-  updateLoadingText()
+  let loadingInterval = updateLoadingText()
   
   try {
     // 调用数据问答接口，处理阻塞式响应
@@ -569,7 +569,7 @@ const sendMessage = async () => {
       body: JSON.stringify({
         sessionId: currentSession.value.id,
         question: userMessage,
-        dbConfigId: currentSession.value.databaseId,
+        dbConfigId: currentSession.value.dbConfigId,
         tableId: currentTable
       })
     })
@@ -643,8 +643,14 @@ const sendMessage = async () => {
     console.error('请求失败:', error)
     aiMessage.error = error.message || '查询失败，请重试'
   } finally {
+    // 确保清理加载状态
     isLoading.value = false
     loadingText.value = '正在思考...'
+    
+    // 清除加载文本定时器
+    if (loadingInterval) {
+      clearInterval(loadingInterval)
+    }
   }
 }
 
@@ -685,6 +691,7 @@ const updateLoadingText = () => {
     loadingText.value = texts[index % texts.length]
     index++
   }, 2000)
+  return interval // 返回定时器ID，以便清理
 }
 
 const formatTime = (date) => {

@@ -6,7 +6,7 @@ package com.mt.agent.workflow.api.util;
 public class PromptTemplates {
     
     /**
-     * SQL生成提示词模板（基于sample中的ExePrompt）
+     * SQL生成提示词模板
      */
     public static final String SQL_GENERATION_TEMPLATE = """
         已知【本业务系统】支持用户通过文本对话的方式对数据进行分析，并将分析结果进行可视化。
@@ -66,29 +66,5 @@ public class PromptTemplates {
         5. 添加必要的注释
         
         请生成Python代码：
-        """;
-    
-    /**
-     * 数据解释模板
-     */
-    public static final String DATA_EXPLANATION_TEMPLATE = """
-        请对以下查询结果进行分析和解释：
-        
-        ## 用户问题：
-        {{question}}
-        
-        ## 执行的SQL：
-        {{sql}}
-        
-        ## 查询结果：
-        {{result}}
-        
-        ## 要求：
-        1. 用通俗易懂的语言解释数据
-        2. 突出关键发现和洞察
-        3. 如果数据有异常或特殊情况，请指出
-        4. 给出可能的建议或后续分析方向
-        
-        请提供数据分析：
         """;
 }

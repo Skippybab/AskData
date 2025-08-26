@@ -94,42 +94,7 @@ public class ChatServiceImpl implements ChatService {
         );
     }
 
-    @Override
-    public void sendMessage(Long sessionId, Long userId, String content, Long dbConfigId, SseEmitter emitter) {
-        // TODO: 实现普通聊天功能（非数据问答）
-        // 这里可以后续扩展为调用其他LLM或处理非结构化对话
-        
-        try {
-            // 保存用户消息
-            ChatMessage userMessage = new ChatMessage();
-            userMessage.setTenantId(0L);
-            userMessage.setSessionId(sessionId);
-            userMessage.setUserId(userId);
-            userMessage.setRole("user");
-            userMessage.setContent(content);
-            userMessage.setContentType("text");
-            userMessage.setStatus(1);
-            userMessage.setCreatedAtMs(System.currentTimeMillis());
-            messageMapper.insert(userMessage);
-            
-            // 简单回复
-            emitter.send(SseEmitter.event()
-                .name("message")
-                .data("{\"content\":\"暂不支持普通聊天，请选择数据库配置进行数据问答。\"}"));
-            
-            emitter.complete();
-        } catch (Exception e) {
-            log.error("发送普通消息失败: {}", e.getMessage(), e);
-            try {
-                emitter.send(SseEmitter.event()
-                    .name("error")
-                    .data("{\"error\":\"" + e.getMessage() + "\"}"));
-                emitter.complete();
-            } catch (Exception ex) {
-                log.error("发送错误事件失败: {}", ex.getMessage(), ex);
-            }
-        }
-    }
+
 
     @Override
     public List<UserToolConfig> getUserTools(Long userId) {
@@ -260,10 +225,5 @@ public class ChatServiceImpl implements ChatService {
         }
     }
     
-    @Override
-    public String sendMessageSync(Long sessionId, Long userId, String content, Long dbConfigId) {
-        // TODO: 实现普通聊天功能（非数据问答）的同步版本
-        // 这里可以后续扩展为调用其他LLM或处理非结构化对话
-        return "{\"success\":false,\"error\":\"普通聊天功能暂未实现\"}";
-    }
+
 }

@@ -76,6 +76,11 @@ public class DataQuestionResponse {
     private long duration;
     
     /**
+     * 兜底回复内容
+     */
+    private String bottomReply;
+    
+    /**
      * 创建成功响应
      */
     public static DataQuestionResponse success(Long sessionId, Long messageId) {

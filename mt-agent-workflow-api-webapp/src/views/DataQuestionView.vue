@@ -505,136 +505,104 @@ const sendMessage = async () => {
   
   scrollToBottom()
   isLoading.value = true
-  updateLoadingText()
-  
-  let eventSource = null
-  let timeoutId = null
+  let loadingInterval = updateLoadingText()
   
   try {
-    // 设置60秒超时定时器
-    timeoutId = setTimeout(() => {
-      console.warn('数据问答请求超时')
-      if (eventSource) {
-        eventSource.close()
-      }
-      aiMessage.error = '请求处理超时（60秒），请稍后重试'
-      isLoading.value = false
-    }, 60000) // 60秒超时
+    // 调用数据问答接口，处理阻塞式响应
+    const response = await fetch('/api/data-question/ask', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        sessionId: currentSession.value.id,
+        question: question,
+        dbConfigId: currentSession.value.dbConfigId,
+        tableId: selectedTable.value || null
+      })
+    })
     
-    // 使用SSE流式接收数据
-    eventSource = new EventSource(`/api/data-question/chat?sessionId=${currentSession.value.id}&question=${encodeURIComponent(question)}&dbConfigId=${currentSession.value.dbConfigId}&tableId=${selectedTable.value || ''}`)
-    
-    eventSource.onmessage = function(event) {
-      try {
-        const data = JSON.parse(event.data)
-        handleSSEMessage(data, aiMessage)
-      } catch (e) {
-        console.error('解析SSE消息失败', e)
-      }
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`)
     }
     
-    eventSource.addEventListener('llm_token', function(event) {
-      try {
-        const data = JSON.parse(event.data)
-        handleSSEMessage(data, aiMessage)
-      } catch (e) {
-        console.error('解析llm_token消息失败', e)
-      }
-    })
+    // 读取JSON响应
+    const result = await response.json()
+    console.log('收到响应:', result)
     
-    eventSource.addEventListener('done', function(event) {
-      console.log('数据问答完成')
-      isLoading.value = false
-      eventSource.close()
-      // 清除超时定时器
-      if (timeoutId) {
-        clearTimeout(timeoutId)
-        timeoutId = null
+    if (result.code === 200 && result.data) {
+      const data = result.data
+      
+      // 更新AI消息内容
+      aiMessage.thinking = data.thinking || ''
+      aiMessage.pythonCode = data.pythonCode || ''
+      aiMessage.sql = data.sql || ''
+      
+      // 处理查询结果
+      if (data.result) {
+        aiMessage.result = data.result
+        aiMessage.resultType = data.resultType || 'text'
+        
+        // 如果是表格数据，解析为数组
+        if (data.resultType === 'table' && typeof data.result === 'string') {
+          try {
+            // 提取JSON数组
+            const match = data.result.match(/\[{.*?}\]/s)
+            if (match) {
+              const jsonStr = match[0]
+                .replace(/'/g, '"')
+                .replace(/None/g, 'null')
+                .replace(/True/g, 'true')
+                .replace(/False/g, 'false')
+              
+              const tableData = JSON.parse(jsonStr)
+              aiMessage.resultData = tableData
+              aiMessage.resultColumns = tableData.length > 0 ? Object.keys(tableData[0]) : []
+              aiMessage.content = `查询成功，返回 ${tableData.length} 条记录`
+            } else {
+              // 文本结果
+              aiMessage.content = data.result
+            }
+          } catch (parseError) {
+            console.log('解析JSON失败，使用原始文本:', parseError)
+            aiMessage.content = data.result
+          }
+        } else {
+          // 非表格类型结果，直接显示
+          aiMessage.content = data.result
+        }
+      } else {
+        // 如果没有结果，根据其他内容设置提示
+        if (data.thinking) {
+          aiMessage.content = '分析完成'
+        } else {
+          aiMessage.content = '处理完成，但未返回查询结果'
+        }
       }
-    })
-    
-    eventSource.addEventListener('error', function(event) {
-      console.error('SSE连接错误', event)
-      aiMessage.error = '连接错误，请重试'
-      isLoading.value = false
-      eventSource.close()
-      // 清除超时定时器
-      if (timeoutId) {
-        clearTimeout(timeoutId)
-        timeoutId = null
-      }
-    })
-    
-    eventSource.onerror = function(event) {
-      console.error('SSE连接失败', event)
-      aiMessage.error = '连接失败，请重试'
-      isLoading.value = false
-      eventSource.close()
-      // 清除超时定时器
-      if (timeoutId) {
-        clearTimeout(timeoutId)
-        timeoutId = null
-      }
+      
+    } else {
+      // 处理错误响应
+      const errorMsg = result.message || result.error || '查询失败'
+      aiMessage.error = errorMsg
+      aiMessage.content = ''
     }
     
   } catch (error) {
-    console.error('请求失败', error)
-    aiMessage.error = '请求失败: ' + error.message
+    console.error('请求失败:', error)
+    aiMessage.error = error.message || '查询失败，请重试'
+  } finally {
+    // 确保清理加载状态
     isLoading.value = false
-    // 清除超时定时器
-    if (timeoutId) {
-      clearTimeout(timeoutId)
-      timeoutId = null
+    loadingText.value = '正在思考...'
+    
+    // 清除加载文本定时器
+    if (loadingInterval) {
+      clearInterval(loadingInterval)
     }
   }
 }
 
-// 处理SSE消息
-const handleSSEMessage = (data, aiMessage) => {
-  if (data.type === 'thinking') {
-    aiMessage.thinking = data.content
-    scrollToBottom()
-  } else if (data.type === 'sql_result') {
-    aiMessage.result = data.content
-    aiMessage.truncated = data.truncated || false
-    aiMessage.originalSize = data.originalSize || 0
-    
-    // 尝试解析为表格数据
-    if (tryParseAsTable(data.content)) {
-      aiMessage.resultType = 'table'
-    } else {
-      aiMessage.resultType = 'text'
-    }
-    
-    scrollToBottom()
-  }
-}
-
-// 尝试解析为表格数据
-const tryParseAsTable = (content) => {
-  try {
-    // 查找JSON数组
-    const match = content.match(/\[{.*?}\]/s)
-    if (match) {
-      const jsonStr = match[0]
-        .replace(/'/g, '"')
-        .replace(/None/g, 'null')
-        .replace(/True/g, 'true')
-        .replace(/False/g, 'false')
-      
-      const tableData = JSON.parse(jsonStr)
-      if (Array.isArray(tableData) && tableData.length > 0) {
-        const aiMessage = messages.value[messages.value.length - 1]
-        aiMessage.resultData = tableData
-        aiMessage.resultColumns = Object.keys(tableData[0])
-        return true
-      }
-    }
-  } catch (e) {
-    console.debug('非表格数据格式', e)
-  }
-  return false
-}
+// SSE相关函数已删除，现在使用阻塞式通信
 
 // 复制结果
 const copyResult = (result) => {
@@ -670,6 +638,7 @@ const updateLoadingText = () => {
     loadingText.value = texts[index % texts.length]
     index++
   }, 2000)
+  return interval // 返回定时器ID，以便清理
 }
 
 // 格式化时间

@@ -49,7 +49,7 @@ public class SqlExecutionServiceImpl implements SqlExecutionService {
 		if (cfg == null) throw new IllegalArgumentException("配置不存在");
 		SqlGuardPolicy policy = sqlGuardService.getEffectivePolicy(0L, dbConfigId); // 使用默认租户ID
 		sqlGuardService.validate(sql, policy);
-		String safeSql = SqlParserUtil.ensureLimit(sql, policy.getMaxScanRows() == null ? 1000 : policy.getMaxScanRows().intValue());
+//		String safeSql = SqlParserUtil.ensureLimit(sql, policy.getMaxScanRows() == null ? 1000 : policy.getMaxScanRows().intValue());
 
 		ExternalDbExecutor.ExecOptions opt = new ExternalDbExecutor.ExecOptions();
 		opt.queryTimeoutSeconds = (policy.getMaxTimeoutMs() == null ? 30_000 : policy.getMaxTimeoutMs()) / 1000;
@@ -57,10 +57,10 @@ public class SqlExecutionServiceImpl implements SqlExecutionService {
 
 		DataSource ds = DbConnectionPoolManager.getOrCreate(dbConfigId, cfg, masterKey);
 		try {
-			ExternalDbExecutor.QueryResult qr = ExternalDbExecutor.query(ds, safeSql, opt);
-			return createCompleteExecutionRecord(dbConfigId, safeSql, null, 1, qr.durationMs, qr.rowCount, null);
+			ExternalDbExecutor.QueryResult qr = ExternalDbExecutor.query(ds, sql, opt);
+			return createCompleteExecutionRecord(dbConfigId, sql, null, 1, qr.durationMs, qr.rowCount, null);
 		} catch (RuntimeException e) {
-			createCompleteExecutionRecord(dbConfigId, safeSql, null, 2, 0L, 0L, e.getMessage());
+			createCompleteExecutionRecord(dbConfigId, sql, null, 2, 0L, 0L, e.getMessage());
 			throw e;
 		}
 	}
@@ -93,7 +93,7 @@ public class SqlExecutionServiceImpl implements SqlExecutionService {
 		// 执行SQL
 		SqlGuardPolicy policy = sqlGuardService.getEffectivePolicy(0L, dbConfigId); // 使用默认租户ID
 		sqlGuardService.validate(sql, policy);
-		String safeSql = SqlParserUtil.ensureLimit(sql, policy.getMaxScanRows() == null ? 1000 : policy.getMaxScanRows().intValue());
+//		String safeSql = SqlParserUtil.ensureLimit(sql, policy.getMaxScanRows() == null ? 1000 : policy.getMaxScanRows().intValue());
 
 		ExternalDbExecutor.ExecOptions opt = new ExternalDbExecutor.ExecOptions();
 		opt.queryTimeoutSeconds = (policy.getMaxTimeoutMs() == null ? 30_000 : policy.getMaxTimeoutMs()) / 1000;
@@ -101,8 +101,8 @@ public class SqlExecutionServiceImpl implements SqlExecutionService {
 
 		DataSource ds = DbConnectionPoolManager.getOrCreate(dbConfigId, cfg, masterKey);
 		try {
-			ExternalDbExecutor.QueryResult qr = ExternalDbExecutor.query(ds, safeSql, opt);
-			SqlExecution exec = createCompleteExecutionRecord(dbConfigId, safeSql, schemaVersionId, 1, qr.durationMs, qr.rowCount, null);
+			ExternalDbExecutor.QueryResult qr = ExternalDbExecutor.query(ds, sql, opt);
+			SqlExecution exec = createCompleteExecutionRecord(dbConfigId, sql, schemaVersionId, 1, qr.durationMs, qr.rowCount, null);
 
 			// 保存到缓存
 			if (schemaVersionId != null) {
@@ -112,7 +112,7 @@ public class SqlExecutionServiceImpl implements SqlExecutionService {
 
 			return new SqlExecutionResult(exec, qr);
 		} catch (RuntimeException e) {
-			SqlExecution exec = createCompleteExecutionRecord(dbConfigId, safeSql, schemaVersionId, 2, 0L, 0L, e.getMessage());
+			SqlExecution exec = createCompleteExecutionRecord(dbConfigId, sql, schemaVersionId, 2, 0L, 0L, e.getMessage());
 			throw e;
 		}
 	}

@@ -45,7 +45,7 @@ public class TableInfoService {
      * @return 格式化后的DDL字符串
      */
     public String getEnabledTablesDdl(Long dbConfigId, Long userId) {
-        log.info("🔍 [TableInfoService] 开始查询启用的表信息, dbConfigId: {}, userId: {}", dbConfigId, userId);
+//        log.info("🔍 [TableInfoService] 开始查询启用的表信息, dbConfigId: {}, userId: {}", dbConfigId, userId);
         
         QueryWrapper<TableInfo> queryWrapper = new QueryWrapper<>();
         queryWrapper.eq("db_config_id", dbConfigId);
@@ -99,7 +99,7 @@ public class TableInfoService {
      * @return 格式化后的表信息字符串
      */
     public String getEnabledTablesFormattedForDify(Long dbConfigId, Long userId) {
-        log.info("🔍 [TableInfoService] 开始查询启用的表信息用于Dify格式化, dbConfigId: {}, userId: {}", dbConfigId, userId);
+//        log.info("🔍 [TableInfoService] 开始查询启用的表信息用于Dify格式化, dbConfigId: {}, userId: {}", dbConfigId, userId);
         
         QueryWrapper<TableInfo> queryWrapper = new QueryWrapper<>();
         queryWrapper.eq("db_config_id", dbConfigId);
@@ -155,7 +155,7 @@ public class TableInfoService {
         List<TableInfo> tableInfos = tableInfoMapper.selectList(queryWrapper);
         
         // 移除权限控制，所有表都有权限
-        log.info("🔍 [TableInfoService] getFormattedTableStructures: 跳过权限检查，所有表都有权限");
+//        log.info("🔍 [TableInfoService] getFormattedTableStructures: 跳过权限检查，所有表都有权限");
         
         StringBuilder result = new StringBuilder();
         for (TableInfo tableInfo : tableInfos) {

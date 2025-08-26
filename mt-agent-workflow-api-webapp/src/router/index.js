@@ -26,6 +26,11 @@ const routes = [
         component: () => import('../views/ChatInterface.vue')
       },
       {
+        path: 'chat-interface-v2',
+        name: 'ChatInterfaceV2',
+        component: () => import('../views/ChatInterfaceV2.vue')
+      },
+      {
         path: 'api',
         name: 'ApiManagement',
         component: () => import('../views/ApiManagement.vue')

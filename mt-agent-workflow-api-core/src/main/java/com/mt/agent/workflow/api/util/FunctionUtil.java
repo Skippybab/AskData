@@ -43,17 +43,7 @@ public class FunctionUtil {
     }
     
     /**
-     * 执行SQL语句（兼容旧版本调用）
-     */
-    public List<Map<String, Object>> executeSQL(String sql) {
-        log.warn("使用无dbConfigId的executeSQL方法，建议使用executeSQL(String sql, String userId)方法");
-        // 尝试从当前线程上下文获取用户ID，如果获取不到则使用默认值
-        String userId = getCurrentUserId();
-        return executeSQL(sql, userId);
-    }
-    
-    /**
-     * 执行SQL语句（推荐使用）
+     * 执行SQL语句
      */
     public List<Map<String, Object>> executeSQL(String sql, String userId) {
         log.info("🔧 [FunctionUtil] 开始执行SQL: {}, userId: {}", sql, userId);

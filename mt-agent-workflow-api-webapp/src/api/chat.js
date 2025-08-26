@@ -10,9 +10,7 @@ export const chatApi = {
   getMessages(sessionId) {
     return request({ url: `/api/chat/sessions/${sessionId}/messages`, method: 'get' })
   },
-  sendMessage(data) {
-    return request({ url: '/api/chat/send', method: 'post', data })
-  },
+
   getUserTools() {
     return request({ url: '/api/chat/user-tools', method: 'get' })
   },

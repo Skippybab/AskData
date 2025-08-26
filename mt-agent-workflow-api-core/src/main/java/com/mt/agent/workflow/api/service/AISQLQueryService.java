@@ -18,12 +18,5 @@ public interface AISQLQueryService {
      */
     String generateSQL(String queryText, String tableName, String pythonCode, 
                       String historyStr, String question, String tables);
-    
-    /**
-     * 简化版SQL生成
-     * @param queryText 查询文本
-     * @param tableName 表名
-     * @return 生成的SQL语句
-     */
-    String generateSimpleSQL(String queryText, String tableName);
+
 }

@@ -742,7 +742,7 @@ const sendMessage = async () => {
       controller.abort()
     }, 300000) // 5分钟超时
 
-    const response = await fetch('http://localhost:8080/api/chat/send', {
+    const response = await fetch('/api/data-question/ask', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -750,7 +750,7 @@ const sendMessage = async () => {
       },
       body: JSON.stringify({
         sessionId: currentSession.value.id,
-        content: userMessageContent,
+        question: userMessageContent,
         dbConfigId: selectedDbConfig.value,
         tableId: selectedTable.value
       }),

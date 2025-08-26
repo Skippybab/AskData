@@ -14,7 +14,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.*;
-import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.HashMap;
@@ -23,9 +22,6 @@ import java.util.Map;
 
 import com.mt.agent.workflow.api.config.DifyConfig;
 import org.springframework.web.reactive.function.client.WebClient;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.MediaType;
-import reactor.core.publisher.Mono;
 
 @Slf4j
 @RestController
@@ -194,18 +190,7 @@ public class ChatController {
         }
     }
 
-    /**
-     * 发送消息 - 重定向到数据问答接口
-     * @deprecated 请直接使用 /api/data-question/ask 进行数据问答
-     */
-    @PostMapping(value = "/send")
-    public Result<String> sendMessage(@RequestBody Map<String, Object> requestBody,
-                                      HttpServletRequest request) {
-        log.warn("📨 [ChatController] 收到已废弃的普通聊天请求，建议使用数据问答接口");
-        
-        // 返回重定向提示，不执行实际的聊天逻辑
-        return Result.error("此接口已废弃，请使用 /api/data-question/ask 进行数据问答");
-    }
+
 
     /**
      * 获取用户可用工具
