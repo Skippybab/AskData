@@ -19,4 +19,17 @@ public interface ChatOrchestratorService {
      * @return 数据问答响应对象
      */
     DataQuestionResponse processDataQuestionSync(Long sessionId, Long userId, String question, Long dbConfigId, Long tableId);
+    
+    /**
+     * 处理用户消息，执行完整的数据问答流程（同步版本）- 支持表名
+     * 
+     * @param sessionId 会话ID
+     * @param userId 用户ID
+     * @param question 用户问题
+     * @param dbConfigId 数据库配置ID
+     * @param tableId 表ID（可为null）
+     * @param tableName 表名（可为null）
+     * @return 数据问答响应对象
+     */
+    DataQuestionResponse processDataQuestionSync(Long sessionId, Long userId, String question, Long dbConfigId, Long tableId, String tableName);
 }

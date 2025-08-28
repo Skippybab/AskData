@@ -3,14 +3,12 @@ package com.mt.agent.workflow.api.service;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.mt.agent.workflow.api.entity.TableInfo;
 import com.mt.agent.workflow.api.mapper.TableInfoMapper;
-import com.mt.agent.workflow.api.util.BufferUtil;
 import com.mt.agent.workflow.api.util.DdlParser;
 import com.mt.agent.workflow.api.util.TableNameFormatter;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
-import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -25,9 +23,6 @@ public class TableInfoService {
     
     @Autowired
     private TableNameFormatter tableNameFormatter;
-
-    @Autowired
-    private BufferUtil bufferUtil;
 
     /**
      * 根据数据库配置ID获取所有启用的表的DDL信息，格式化为字符串。
@@ -78,16 +73,10 @@ public class TableInfoService {
                     table.getTableDdl() != null ? table.getTableDdl().length() : 0);
             }
         }
-        
-        // 移除权限控制，所有表都有权限
-        log.info("🔍 [TableInfoService] 跳过权限检查，所有表都有权限");
-        
+
         String result = tableInfos.stream()
                 .map(TableInfo::getTableDdl)
                 .collect(Collectors.joining("\n\n"));
-        
-        log.info("🔍 [TableInfoService] 最终返回的DDL字符串长度: {}", result != null ? result.length() : 0);
-        
         return result;
     }
     
@@ -99,18 +88,12 @@ public class TableInfoService {
      * @return 格式化后的表信息字符串
      */
     public String getEnabledTablesFormattedForDify(Long dbConfigId, Long userId) {
-//        log.info("🔍 [TableInfoService] 开始查询启用的表信息用于Dify格式化, dbConfigId: {}, userId: {}", dbConfigId, userId);
-        
         QueryWrapper<TableInfo> queryWrapper = new QueryWrapper<>();
         queryWrapper.eq("db_config_id", dbConfigId);
         queryWrapper.eq("enabled", 1);
         
         List<TableInfo> tableInfos = tableInfoMapper.selectList(queryWrapper);
-        log.info("🔍 [TableInfoService] 查询到启用表数量: {}", tableInfos.size());
-        
-        // 移除权限控制，所有表都有权限
-        log.info("🔍 [TableInfoService] 跳过权限检查，所有表都有权限");
-        
+
         // 使用TableNameFormatter格式化每个表的信息，确保符合Dify接口格式要求
         StringBuilder result = new StringBuilder();
         for (TableInfo tableInfo : tableInfos) {
@@ -119,14 +102,6 @@ public class TableInfoService {
                 tableInfo.getTableComment(),
                 tableInfo.getTableDdl()
             );
-            // 生成TableSchema
-            String formattedTableSchema = tableNameFormatter.formatTableSchemaForExecutor(
-                tableInfo.getTableName(),
-                tableInfo.getTableComment(),
-                tableInfo.getTableDdl()
-            );
-            bufferUtil.setField(userId.toString(), "TableSchema_result", formattedTableSchema, -1, TimeUnit.DAYS);
-            
             if (formattedTableInfo != null && !formattedTableInfo.trim().isEmpty()) {
                 if (result.length() > 0) {
                     result.append("\n\n");
@@ -136,8 +111,6 @@ public class TableInfoService {
         }
         
         String finalResult = result.toString();
-        log.info("🔍 [TableInfoService] 最终返回的格式化表信息长度: {}", finalResult != null ? finalResult.length() : 0);
-        
         return finalResult;
     }
     
@@ -147,85 +120,158 @@ public class TableInfoService {
      * @param userId 用户ID
      * @return 格式化的表结构信息
      */
-    public String getFormattedTableStructures(Long dbConfigId, Long userId) {
+    public String getEnabledTablesFormattedForExecutor(Long dbConfigId, Long userId) {
         QueryWrapper<TableInfo> queryWrapper = new QueryWrapper<>();
         queryWrapper.eq("db_config_id", dbConfigId);
+        queryWrapper.eq("enabled", 1);
+
+        List<TableInfo> tableInfos = tableInfoMapper.selectList(queryWrapper);
+        // 生成TableSchema
+        StringBuilder result = new StringBuilder();
+        for (TableInfo tableInfo : tableInfos) {
+            String formattedTableInfo = tableNameFormatter.formatTableSchemaForExecutor(
+                    tableInfo.getTableName(),
+                    tableInfo.getTableComment(),
+                    tableInfo.getTableDdl()
+            );
+            if (formattedTableInfo != null && !formattedTableInfo.trim().isEmpty()) {
+                if (result.length() > 0) {
+                    result.append("\n\n");
+                }
+                result.append(formattedTableInfo);
+            }
+        }
+        String finalResult = result.toString();
+        return finalResult;
+    }
+    
+    /**
+     * 根据指定的表ID列表获取格式化的表信息（用于Dify接口）
+     * @param dbConfigId 数据库配置ID
+     * @param tableIds 表ID列表
+     * @param userId 用户ID
+     * @return 格式化后的表信息字符串
+     */
+    public String getSelectedTablesFormattedForDify(Long dbConfigId, List<Long> tableIds, Long userId) {
+        if (tableIds == null || tableIds.isEmpty()) {
+            log.warn("🔍 [TableInfoService] 表ID列表为空，返回空字符串");
+            return "";
+        }
+        
+        QueryWrapper<TableInfo> queryWrapper = new QueryWrapper<>();
+        queryWrapper.eq("db_config_id", dbConfigId);
+        queryWrapper.in("id", tableIds);
         queryWrapper.eq("enabled", 1);
         
         List<TableInfo> tableInfos = tableInfoMapper.selectList(queryWrapper);
-        
-        // 移除权限控制，所有表都有权限
-//        log.info("🔍 [TableInfoService] getFormattedTableStructures: 跳过权限检查，所有表都有权限");
-        
+        log.info("🔍 [TableInfoService] 查询到 {} 个指定表信息", tableInfos.size());
+
+        // 使用TableNameFormatter格式化每个表的信息，确保符合Dify接口格式要求
         StringBuilder result = new StringBuilder();
         for (TableInfo tableInfo : tableInfos) {
-            String formattedStructure = DdlParser.formatDdlToPrompt(tableInfo.getTableDdl());
-            if (formattedStructure != null && !formattedStructure.trim().isEmpty()) {
-                result.append(formattedStructure).append("\n\n");
+            String formattedTableInfo = tableNameFormatter.formatTableNameForDify(
+                tableInfo.getTableName(),
+                tableInfo.getTableComment(),
+                tableInfo.getTableDdl()
+            );
+            if (formattedTableInfo != null && !formattedTableInfo.trim().isEmpty()) {
+                if (result.length() > 0) {
+                    result.append("\n\n");
+                }
+                result.append(formattedTableInfo);
             }
         }
         
-        return result.toString();
+        String finalResult = result.toString();
+        log.info("🔍 [TableInfoService] 生成的Dify格式表信息长度: {}", finalResult.length());
+        return finalResult;
     }
     
     /**
-     * 获取单个表的格式化结构信息（用于提示词）
+     * 根据指定的表ID列表获取格式化的表结构信息（用于执行器）
      * @param dbConfigId 数据库配置ID
-     * @param tableId 表ID
+     * @param tableIds 表ID列表
      * @param userId 用户ID
      * @return 格式化的表结构信息
      */
-    public String getFormattedTableStructure(Long dbConfigId, Long tableId, Long userId) {
-        QueryWrapper<TableInfo> queryWrapper = new QueryWrapper<>();
-        queryWrapper.eq("db_config_id", dbConfigId);
-        queryWrapper.eq("id", tableId);
-        queryWrapper.eq("enabled", 1);
-        
-        TableInfo tableInfo = tableInfoMapper.selectOne(queryWrapper);
-        
-        if (tableInfo == null) {
-            return null;
+    public String getSelectedTablesFormattedForExecutor(Long dbConfigId, List<Long> tableIds, Long userId) {
+        if (tableIds == null || tableIds.isEmpty()) {
+            log.warn("🔍 [TableInfoService] 表ID列表为空，返回空字符串");
+            return "";
         }
         
-        // 移除权限控制，所有表都有权限
-        log.info("🔍 [TableInfoService] getFormattedTableStructure: 跳过权限检查，所有表都有权限");
+        QueryWrapper<TableInfo> queryWrapper = new QueryWrapper<>();
+        queryWrapper.eq("db_config_id", dbConfigId);
+        queryWrapper.in("id", tableIds);
+        queryWrapper.eq("enabled", 1);
+
+        List<TableInfo> tableInfos = tableInfoMapper.selectList(queryWrapper);
+        log.info("🔍 [TableInfoService] 查询到 {} 个指定表信息", tableInfos.size());
         
-        return DdlParser.formatDdlToPrompt(tableInfo.getTableDdl());
+        // 生成TableSchema
+        StringBuilder result = new StringBuilder();
+        for (TableInfo tableInfo : tableInfos) {
+            String formattedTableInfo = tableNameFormatter.formatTableSchemaForExecutor(
+                    tableInfo.getTableName(),
+                    tableInfo.getTableComment(),
+                    tableInfo.getTableDdl()
+            );
+            if (formattedTableInfo != null && !formattedTableInfo.trim().isEmpty()) {
+                if (result.length() > 0) {
+                    result.append("\n\n");
+                }
+                result.append(formattedTableInfo);
+            }
+        }
+        String finalResult = result.toString();
+        log.info("🔍 [TableInfoService] 生成的执行器格式表信息长度: {}", finalResult.length());
+        return finalResult;
     }
     
     /**
-     * 获取单个表的标准化格式信息（用于Dify接口的all_table_name参数）
+     * 根据表名获取表ID
      * @param dbConfigId 数据库配置ID
-     * @param tableId 表ID
-     * @param userId 用户ID
-     * @return 标准格式的表信息
+     * @param tableName 表名
+     * @return 表ID，如果未找到则返回null
      */
-    public String getStandardTableNameFormat(Long dbConfigId, Long tableId, Long userId) {
-        log.info("🔍 [TableInfoService] 开始查询单个表信息, dbConfigId: {}, tableId: {}, userId: {}", dbConfigId, tableId, userId);
+    public Long getTableIdByName(Long dbConfigId, String tableName) {
+        log.info("🔍 [TableInfoService] 根据表名查询表ID, dbConfigId: {}, tableName: {}", dbConfigId, tableName);
         
         QueryWrapper<TableInfo> queryWrapper = new QueryWrapper<>();
         queryWrapper.eq("db_config_id", dbConfigId);
-        queryWrapper.eq("id", tableId);
+        queryWrapper.eq("table_name", tableName);
         queryWrapper.eq("enabled", 1);
         
         TableInfo tableInfo = tableInfoMapper.selectOne(queryWrapper);
         
         if (tableInfo == null) {
-            log.warn("🔍 [TableInfoService] 未找到指定的表信息, dbConfigId: {}, tableId: {}", dbConfigId, tableId);
-            
-            // 查询该数据库下的所有表进行调试
-            QueryWrapper<TableInfo> allTablesQuery = new QueryWrapper<>();
-            allTablesQuery.eq("db_config_id", dbConfigId);
-            List<TableInfo> allTables = tableInfoMapper.selectList(allTablesQuery);
-            log.info("🔍 [TableInfoService] 该数据库配置下的所有表数量: {}", allTables.size());
-            
-            for (TableInfo table : allTables) {
-                log.info("🔍 [TableInfoService] 表信息: id={}, name={}, enabled={}", 
-                    table.getId(), 
-                    table.getTableName(), 
-                    table.getEnabled());
-            }
-            
+            log.warn("🔍 [TableInfoService] 未找到指定的表, dbConfigId: {}, tableName: {}", dbConfigId, tableName);
+            return null;
+        }
+        
+        log.info("🔍 [TableInfoService] 找到表ID: {}, name: {}", tableInfo.getId(), tableInfo.getTableName());
+        return tableInfo.getId();
+    }
+    
+    /**
+     * 根据表名获取单个表的标准化格式信息（用于Dify接口的all_table_name参数）
+     * @param dbConfigId 数据库配置ID
+     * @param tableName 表名
+     * @param userId 用户ID
+     * @return 标准格式的表信息
+     */
+    public String getStandardTableNameFormatByName(Long dbConfigId, String tableName, Long userId) {
+        log.info("🔍 [TableInfoService] 根据表名查询单个表信息, dbConfigId: {}, tableName: {}, userId: {}", dbConfigId, tableName, userId);
+        
+        QueryWrapper<TableInfo> queryWrapper = new QueryWrapper<>();
+        queryWrapper.eq("db_config_id", dbConfigId);
+        queryWrapper.eq("table_name", tableName);
+        queryWrapper.eq("enabled", 1);
+        
+        TableInfo tableInfo = tableInfoMapper.selectOne(queryWrapper);
+        
+        if (tableInfo == null) {
+            log.warn("🔍 [TableInfoService] 未找到指定的表信息, dbConfigId: {}, tableName: {}", dbConfigId, tableName);
             return null;
         }
         
@@ -235,8 +281,33 @@ public class TableInfoService {
             tableInfo.getEnabled(),
             tableInfo.getTableDdl() != null ? tableInfo.getTableDdl().length() : 0);
         
-        // 移除权限控制，所有表都有权限
-        log.info("🔍 [TableInfoService] getStandardTableNameFormat: 跳过权限检查，所有表都有权限");
+        String result = tableNameFormatter.formatTableNameForDify(
+            tableInfo.getTableName(),
+            tableInfo.getTableComment(),
+            tableInfo.getTableDdl()
+        );
+        return result;
+    }
+    
+    /**
+     * 获取单个表的标准化格式信息（用于Dify接口的all_table_name参数）
+     * @param dbConfigId 数据库配置ID
+     * @param tableId 表ID
+     * @param userId 用户ID
+     * @return 标准格式的表信息
+     */
+    public String getStandardTableNameForDify(Long dbConfigId, Long tableId, Long userId) {
+        QueryWrapper<TableInfo> queryWrapper = new QueryWrapper<>();
+        queryWrapper.eq("db_config_id", dbConfigId);
+        queryWrapper.eq("id", tableId);
+        queryWrapper.eq("enabled", 1);
+        
+        TableInfo tableInfo = tableInfoMapper.selectOne(queryWrapper);
+        
+        if (tableInfo == null) {
+            log.warn("🔍 [TableInfoService] 未找到指定的表信息, dbConfigId: {}, tableId: {}", dbConfigId, tableId);
+            return null;
+        }
         
         String result = tableNameFormatter.formatTableNameForDify(
             tableInfo.getTableName(),
@@ -244,8 +315,34 @@ public class TableInfoService {
             tableInfo.getTableDdl()
         );
         
-        log.info("🔍 [TableInfoService] 格式化后的表信息长度: {}", result != null ? result.length() : 0);
-        
+        return result;
+    }
+
+    /**
+     * 获取单个表的标准化格式信息（用于Gen_Sql接口的tableSchema参数）
+     * @param dbConfigId 数据库配置ID
+     * @param tableId 表ID
+     * @param userId 用户ID
+     * @return 标准格式的表信息
+     */
+    public String getStandardTableNameForExecutor(Long dbConfigId, Long tableId, Long userId){
+        QueryWrapper<TableInfo> queryWrapper = new QueryWrapper<>();
+        queryWrapper.eq("db_config_id", dbConfigId);
+        queryWrapper.eq("id", tableId);
+        queryWrapper.eq("enabled", 1);
+
+        TableInfo tableInfo = tableInfoMapper.selectOne(queryWrapper);
+
+        if (tableInfo == null) {
+            log.warn("🔍 [TableInfoService] 未找到指定的表信息, dbConfigId: {}, tableId: {}", dbConfigId, tableId);
+            return null;
+        }
+
+        String result = tableNameFormatter.formatTableSchemaForExecutor(
+                tableInfo.getTableName(),
+                tableInfo.getTableComment(),
+                tableInfo.getTableDdl()
+        );
         return result;
     }
     
@@ -256,8 +353,6 @@ public class TableInfoService {
      * @return 字段信息列表
      */
     public List<java.util.Map<String, Object>> getTableColumns(Long dbConfigId, Long tableId) {
-        log.info("🔍 [TableInfoService] 获取表字段信息, dbConfigId: {}, tableId: {}", dbConfigId, tableId);
-        
         QueryWrapper<TableInfo> queryWrapper = new QueryWrapper<>();
         queryWrapper.eq("db_config_id", dbConfigId);
         queryWrapper.eq("id", tableId);
@@ -269,7 +364,6 @@ public class TableInfoService {
             log.warn("🔍 [TableInfoService] 未找到表信息");
             return new java.util.ArrayList<>();
         }
-        
         // 解析DDL获取字段信息
         return DdlParser.parseColumnsFromDdl(tableInfo.getTableDdl());
     }
@@ -283,13 +377,6 @@ public class TableInfoService {
      * @return 是否成功
      */
     public boolean updateColumnComment(Long dbConfigId, Long tableId, String columnName, String comment) {
-        log.info("🔍 [TableInfoService] 更新字段备注, dbConfigId: {}, tableId: {}, columnName: {}", 
-                dbConfigId, tableId, columnName);
-        
-        // 这里应该更新DDL中的字段注释
-        // 由于这是一个复杂的DDL修改操作，暂时返回成功
-        // 实际实现中需要解析DDL，修改指定字段的注释，然后更新数据库
-        
         try {
             QueryWrapper<TableInfo> queryWrapper = new QueryWrapper<>();
             queryWrapper.eq("db_config_id", dbConfigId);
@@ -297,7 +384,7 @@ public class TableInfoService {
             
             TableInfo tableInfo = tableInfoMapper.selectOne(queryWrapper);
             if (tableInfo != null) {
-                // 更新DDL中的字段注释（简化实现）
+                // 更新DDL中的字段注释
                 String updatedDdl = DdlParser.updateColumnComment(tableInfo.getTableDdl(), columnName, comment);
                 if (updatedDdl != null) {
                     tableInfo.setTableDdl(updatedDdl);

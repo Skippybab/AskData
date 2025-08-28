@@ -1,6 +1,5 @@
 package com.mt.agent.workflow.api.controller;
 
-import com.mt.agent.workflow.api.entity.TableInfo;
 import com.mt.agent.workflow.api.service.TableInfoService;
 import com.mt.agent.workflow.api.util.Result;
 import lombok.extern.slf4j.Slf4j;
@@ -84,7 +83,7 @@ public class TableInfoController {
             }
             
             // 获取单个表的格式化信息
-            String tableInfo = tableInfoService.getStandardTableNameFormat(dbConfigId, tableId, userId);
+            String tableInfo = tableInfoService.getStandardTableNameForDify(dbConfigId, tableId, userId);
             
             if (tableInfo == null || tableInfo.trim().isEmpty()) {
                 log.warn("📊 [表信息] 未找到表信息, dbConfigId: {}, tableId: {}", dbConfigId, tableId);
@@ -231,6 +230,72 @@ public class TableInfoController {
     }
     
 
+    
+    /**
+     * 获取格式化的表信息
+     * 支持获取所有启用表的信息或指定表的信息
+     * 
+     * @param request 请求体包含dbConfigId和可选的tableIds
+     * @return 格式化的表信息
+     */
+    @PostMapping("/formatted-info")
+    public Result<Map<String, String>> getFormattedTableInfo(@RequestBody Map<String, Object> request) {
+        try {
+            log.info("📊 [表信息] 获取格式化表信息请求: {}", request);
+            
+            // 解析请求参数
+            Long dbConfigId = null;
+            if (request.get("dbConfigId") != null) {
+                dbConfigId = Long.valueOf(request.get("dbConfigId").toString());
+            }
+            
+            List<Long> tableIds = null;
+            if (request.get("tableIds") instanceof List) {
+                tableIds = ((List<?>) request.get("tableIds")).stream()
+                    .map(id -> Long.valueOf(id.toString()))
+                    .collect(java.util.stream.Collectors.toList());
+            }
+            
+            // 参数验证
+            if (dbConfigId == null) {
+                log.error("📊 [表信息] 数据库配置ID不能为空");
+                return Result.error("数据库配置ID不能为空");
+            }
+            
+            // 使用默认用户ID
+            Long userId = 1L;
+            
+            String tableInfo;
+            String tableSchema;
+            
+            if (tableIds != null && !tableIds.isEmpty()) {
+                // 获取指定表的信息
+                log.info("📊 [表信息] 获取指定表的格式化信息, tableIds: {}", tableIds);
+                tableInfo = tableInfoService.getSelectedTablesFormattedForDify(dbConfigId, tableIds, userId);
+                tableSchema = tableInfoService.getSelectedTablesFormattedForExecutor(dbConfigId, tableIds, userId);
+            } else {
+                // 获取所有启用表的信息
+                log.info("📊 [表信息] 获取所有启用表的格式化信息");
+                tableInfo = tableInfoService.getEnabledTablesFormattedForDify(dbConfigId, userId);
+                tableSchema = tableInfoService.getEnabledTablesFormattedForExecutor(dbConfigId, userId);
+            }
+            
+            // 构建返回结果
+            Map<String, String> result = new HashMap<>();
+            result.put("tableInfo", tableInfo != null ? tableInfo : "暂无表信息");
+            result.put("tableSchema", tableSchema != null ? tableSchema : "暂无表结构信息");
+            
+            log.info("📊 [表信息] 成功获取格式化表信息, tableInfo长度: {}, tableSchema长度: {}", 
+                    tableInfo != null ? tableInfo.length() : 0,
+                    tableSchema != null ? tableSchema.length() : 0);
+            
+            return Result.success(result);
+            
+        } catch (Exception e) {
+            log.error("📊 [表信息] 获取格式化表信息失败: {}", e.getMessage(), e);
+            return Result.error("获取格式化表信息失败: " + e.getMessage());
+        }
+    }
     
     /**
      * 批量启用数据库下的所有表

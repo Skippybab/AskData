@@ -8,19 +8,7 @@ import java.util.regex.Pattern;
 
 /**
  * 表名格式化工具类
- * 用于生成标准格式的all_table_name，供Dify接口使用
- *
- * 提供两种不同的表名格式化方法：
- * 1. formatTableNameForDify() - 用于规划器生成all_table_names
- *    格式："表名"，包含以下字段：字段1备注、字段2备注...
- *
- * 2. formatTableSchemaForExecutor() - 用于执行器生成SQL的tableSchema
- *    格式：SQL数据库的表名是```表名```，表描述为```表备注```
- *    并且字段按照逗号分隔的格式"字段名,数据类型,字段描述"列举如下：
- *    字段1名称，字段1数据类型，字段1备注，
- *    字段2名称，字段2数据类型，字段2备注，
- *    ...
- *    字段n名称，字段n数据类型，字段n备注
+ * 用于生成标准格式的all_table_name，供大模型接口使用
  */
 @Slf4j
 @Component
@@ -167,7 +155,6 @@ public class TableNameFormatter {
             log.warn("表名为空，无法格式化");
             return "";
         }
-
         StringBuilder result = new StringBuilder();
 
         // 1. 表基本信息

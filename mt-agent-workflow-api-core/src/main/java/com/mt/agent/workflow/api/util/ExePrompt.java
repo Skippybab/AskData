@@ -3,7 +3,8 @@ package com.mt.agent.workflow.api.util;
 public interface ExePrompt {
 
 
-String GEN_SQL = """
+String
+        GEN_SQL = """
             已知【本业务系统】支持用户通过文本对话的方式对数据进行分析，并将分析结果进行可视化。
             用户的【历史请求】包括
             ```

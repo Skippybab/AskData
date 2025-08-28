@@ -203,8 +203,8 @@ public class SchemaController {
             String columnDefinitions = ddl.substring(startIndex + 1, endIndex);
             log.debug("字段定义部分: {}", columnDefinitions);
             
-            // 按逗号分割字段定义
-            String[] fieldDefs = columnDefinitions.split(",");
+            // 按逗号安全分割字段定义（忽略括号与字符串中的逗号）
+            List<String> fieldDefs = splitColumnDefinitionsSafely(columnDefinitions);
             
             for (String fieldDef : fieldDefs) {
                 fieldDef = fieldDef.trim();
@@ -261,15 +261,8 @@ public class SchemaController {
             } else if (c == ')') {
                 parenCount--;
                 if (parenCount == 0) {
-                    // 找到匹配的右括号，检查后面是否有约束
-                    String remaining = ddl.substring(i + 1).trim().toUpperCase();
-                    if (remaining.startsWith("PRIMARY KEY") || 
-                        remaining.startsWith("KEY") || 
-                        remaining.startsWith("INDEX") || 
-                        remaining.startsWith("UNIQUE") ||
-                        remaining.startsWith("FOREIGN KEY")) {
-                        return i;
-                    }
+                    // 找到与 CREATE TABLE 的 '(' 对应的 ')'，即字段与约束定义整体的结束
+                    return i;
                 }
             }
         }
@@ -299,8 +292,9 @@ public class SchemaController {
             fieldDef = fieldDef.replaceAll("`", "");
             
             // 使用正则表达式解析字段定义
-            // 格式: column_name data_type [NOT NULL] [DEFAULT value] [COMMENT 'comment']
-            String pattern = "^\\s*(\\w+)\\s+([\\w()]+(?:\\s*\\d+)?(?:\\s*,\\s*\\d+)?)\\s*(.*)$";
+            // 格式: column_name data_type[(..)] [UNSIGNED|ZEROFILL] ...
+            // 兼容如: double(15,2)、decimal(10, 4)、bigint、varchar(255)
+            String pattern = "^\\s*(\\w+)\\s+([A-Z0-9_]+(?:\\s+(?:UNSIGNED|ZEROFILL))?(?:\\s*\\([^)]*\\))?)\\s*(.*)$";
             java.util.regex.Pattern p = java.util.regex.Pattern.compile(pattern, java.util.regex.Pattern.CASE_INSENSITIVE);
             java.util.regex.Matcher m = p.matcher(fieldDef);
             
@@ -315,7 +309,7 @@ public class SchemaController {
             
             Map<String, Object> column = new HashMap<>();
             column.put("columnName", columnName);
-            column.put("dbDataType", dataType);
+            column.put("dbDataType", dataType.trim());
             
             // 解析NOT NULL
             boolean isNullable = !remaining.toUpperCase().contains("NOT NULL");
@@ -342,11 +336,22 @@ public class SchemaController {
      */
     private String extractDefaultValue(String remaining) {
         try {
+            // 支持 DEFAULT 'x', DEFAULT "x", DEFAULT x
             java.util.regex.Pattern pattern = java.util.regex.Pattern.compile(
-                "DEFAULT\\s+([^\\s,]+)", java.util.regex.Pattern.CASE_INSENSITIVE);
+                "DEFAULT\\s+(?:'((?:''|[^'])*)'|\"((?:\\\\\"|[^\"])*)\"|([^\\s,]+))",
+                java.util.regex.Pattern.CASE_INSENSITIVE);
             java.util.regex.Matcher matcher = pattern.matcher(remaining);
             if (matcher.find()) {
-                return matcher.group(1);
+                String v1 = matcher.group(1);
+                String v2 = matcher.group(2);
+                String v3 = matcher.group(3);
+                if (v1 != null) {
+                    return v1.replace("''", "'");
+                }
+                if (v2 != null) {
+                    return v2;
+                }
+                return v3;
             }
         } catch (Exception e) {
             log.debug("提取默认值失败: {}", remaining);
@@ -359,16 +364,87 @@ public class SchemaController {
      */
     private String extractComment(String remaining) {
         try {
-            java.util.regex.Pattern pattern = java.util.regex.Pattern.compile(
-                "COMMENT\\s+['\"]([^'\"]*)['\"]", java.util.regex.Pattern.CASE_INSENSITIVE);
-            java.util.regex.Matcher matcher = pattern.matcher(remaining);
-            if (matcher.find()) {
-                return matcher.group(1);
+            // COMMENT '...'(支持内部以 '' 转义的单引号) 或 COMMENT "..."
+            java.util.regex.Pattern singleQuoted = java.util.regex.Pattern.compile(
+                "COMMENT\\s+'((?:''|[^'])*)'", java.util.regex.Pattern.CASE_INSENSITIVE);
+            java.util.regex.Pattern doubleQuoted = java.util.regex.Pattern.compile(
+                "COMMENT\\s+\"([^\"]*)\"", java.util.regex.Pattern.CASE_INSENSITIVE);
+            java.util.regex.Matcher m1 = singleQuoted.matcher(remaining);
+            if (m1.find()) {
+                String content = m1.group(1);
+                return content.replace("''", "'");
+            }
+            java.util.regex.Matcher m2 = doubleQuoted.matcher(remaining);
+            if (m2.find()) {
+                return m2.group(1);
             }
         } catch (Exception e) {
             log.debug("提取注释失败: {}", remaining);
         }
         return null;
+    }
+
+    /**
+     * 安全分割字段定义：仅在顶层（括号深度为0）且不在字符串/反引号中时按逗号分割
+     */
+    private List<String> splitColumnDefinitionsSafely(String columnDefinitions) {
+        List<String> parts = new ArrayList<>();
+        StringBuilder current = new StringBuilder();
+        int parenDepth = 0;
+        boolean inString = false;
+        char stringChar = 0;
+        boolean inBacktick = false;
+
+        for (int i = 0; i < columnDefinitions.length(); i++) {
+            char c = columnDefinitions.charAt(i);
+
+            // 处理反引号包裹（表/列/索引名）
+            if (!inString && c == '`') {
+                inBacktick = !inBacktick;
+                current.append(c);
+                continue;
+            }
+
+            if (!inBacktick) {
+                // 处理字符串字面量（支持单/双引号）
+                if ((c == '\'' || c == '"')) {
+                    if (!inString) {
+                        inString = true;
+                        stringChar = c;
+                    } else if (c == stringChar) {
+                        // 处理 SQL 中单引号转义 ''
+                        if (c == '\'' && i + 1 < columnDefinitions.length() && columnDefinitions.charAt(i + 1) == '\'') {
+                            current.append(c); // 保留一个引号，跳过下一个
+                            i++; // 跳过转义的第二个引号
+                        } else {
+                            inString = false;
+                        }
+                    }
+                    current.append(c);
+                    continue;
+                }
+
+                // 处理括号深度
+                if (!inString) {
+                    if (c == '(') parenDepth++;
+                    else if (c == ')') parenDepth = Math.max(0, parenDepth - 1);
+                }
+            }
+
+            // 在顶层、非字符串、非反引号状态下的逗号才作为分隔符
+            if (!inString && !inBacktick && parenDepth == 0 && c == ',') {
+                parts.add(current.toString());
+                current.setLength(0);
+            } else {
+                current.append(c);
+            }
+        }
+
+        if (current.length() > 0) {
+            parts.add(current.toString());
+        }
+
+        return parts;
     }
     
     /**

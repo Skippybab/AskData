@@ -104,34 +104,239 @@ public class DdlParser {
      */
     private static List<ColumnInfo> extractColumns(String ddl) {
         List<ColumnInfo> columns = new ArrayList<>();
-        
-        // 提取列定义部分
-        Pattern columnPattern = Pattern.compile(
-            "`?([^`\\s]+)`?\\s+([^\\s,]+)(?:\\s*\\([^)]*\\))?\\s*" +
-            "(?:CHARACTER\\s+SET\\s+[^\\s]+)?\\s*" +
-            "(?:COLLATE\\s+[^\\s]+)?\\s*" +
-            "(NOT\\s+NULL|NULL)?\\s*" +
-            "(?:DEFAULT\\s+([^\\s,]+))?\\s*" +
-            "(?:AUTO_INCREMENT)?\\s*" +
-            "(?:COMMENT\\s+['\"]([^'\"]*)['\"])?\\s*" +
-            "(?:PRIMARY\\s+KEY)?\\s*[,)]",
-            Pattern.CASE_INSENSITIVE
-        );
-        
-        Matcher matcher = columnPattern.matcher(ddl);
-        while (matcher.find()) {
-            ColumnInfo column = new ColumnInfo();
-            column.setColumnName(matcher.group(1));
-            column.setDataType(matcher.group(2));
-            column.setNullable(!"NOT NULL".equalsIgnoreCase(matcher.group(3)));
-            column.setDefaultValue(matcher.group(4));
-            column.setComment(matcher.group(5));
-            column.setAutoIncrement(ddl.contains("AUTO_INCREMENT"));
-            
-            columns.add(column);
+
+        if (ddl == null || ddl.isEmpty()) {
+            return columns;
         }
-        
+
+        // 1) 找到 CREATE TABLE 字段定义括号范围
+        int createIdx = indexOfIgnoreCase(ddl, "CREATE TABLE");
+        if (createIdx < 0) {
+            return columns;
+        }
+        int parenStart = ddl.indexOf('(', createIdx);
+        if (parenStart < 0) {
+            return columns;
+        }
+        int parenEnd = findMatchingParenEnd(ddl, parenStart);
+        if (parenEnd < 0) {
+            return columns;
+        }
+
+        String columnBlock = ddl.substring(parenStart + 1, parenEnd);
+
+        // 2) 安全分割为各字段/约束定义（忽略字符串、反引号与内部括号）
+        List<String> defs = splitColumnDefinitionsSafely(columnBlock);
+        for (String def : defs) {
+            String fieldDef = def.trim();
+            if (fieldDef.isEmpty()) continue;
+            if (isConstraintDefinition(fieldDef)) continue;
+
+            // 去除尾部逗号
+            if (fieldDef.endsWith(",")) {
+                fieldDef = fieldDef.substring(0, fieldDef.length() - 1).trim();
+            }
+
+            ColumnInfo column = parseColumnDefinition(fieldDef);
+            if (column != null) {
+                columns.add(column);
+            }
+        }
+
         return columns;
+    }
+
+    private static ColumnInfo parseColumnDefinition(String fieldDef) {
+        try {
+            // 保留原始以便判断自增
+            String original = fieldDef;
+
+            // 移除反引号
+            fieldDef = fieldDef.replace("`", "");
+
+            // 切出 列名 + 数据类型 + 余下部分
+            // 数据类型支持: BIGINT, VARCHAR(255), DOUBLE(15,2), DECIMAL(10, 4), INT UNSIGNED 等
+            Pattern p = Pattern.compile(
+                "^\\s*(\\w+)\\s+([A-Z0-9_]+(?:\\s+(?:UNSIGNED|ZEROFILL))?(?:\\s*\\([^)]*\\))?)\\s*(.*)$",
+                Pattern.CASE_INSENSITIVE);
+            Matcher m = p.matcher(fieldDef);
+            if (!m.find()) {
+                return null;
+            }
+
+            String name = m.group(1);
+            String type = m.group(2);
+            String remaining = m.group(3);
+
+            ColumnInfo info = new ColumnInfo();
+            info.setColumnName(name);
+            info.setDataType(type.trim());
+
+            // NULL/NOT NULL
+            boolean nullable = (indexOfIgnoreCase(remaining, "NOT NULL") < 0);
+            info.setNullable(nullable);
+
+            // DEFAULT 值（支持 'x'、"x"、未加引号）
+            String defaultValue = extractDefaultValue(remaining);
+            info.setDefaultValue(defaultValue);
+
+            // COMMENT 值（支持单引号 '' 转义与双引号）
+            String comment = extractComment(remaining);
+            info.setComment(comment);
+
+            // 是否自增（就近判断当前定义片段）
+            info.setAutoIncrement(indexOfIgnoreCase(original, "AUTO_INCREMENT") >= 0);
+
+            return info;
+        } catch (Exception e) {
+            log.debug("解析字段定义失败: {}", fieldDef, e);
+            return null;
+        }
+    }
+
+    private static int indexOfIgnoreCase(String src, String needle) {
+        return src.toLowerCase().indexOf(needle.toLowerCase());
+    }
+
+    private static int findMatchingParenEnd(String ddl, int startIndex) {
+        int depth = 0;
+        boolean inString = false;
+        char stringChar = 0;
+        boolean inBacktick = false;
+
+        for (int i = startIndex; i < ddl.length(); i++) {
+            char c = ddl.charAt(i);
+
+            if (!inString) {
+                if (c == '`') {
+                    inBacktick = !inBacktick;
+                }
+            }
+
+            if (!inBacktick) {
+                if (c == '\'' || c == '"') {
+                    if (!inString) {
+                        inString = true;
+                        stringChar = c;
+                    } else if (c == stringChar) {
+                        // SQL 单引号转义 ''
+                        if (c == '\'' && i + 1 < ddl.length() && ddl.charAt(i + 1) == '\'') {
+                            i++; // 跳过转义的第二个引号
+                        } else {
+                            inString = false;
+                        }
+                    }
+                } else if (!inString) {
+                    if (c == '(') depth++;
+                    else if (c == ')') {
+                        depth--;
+                        if (depth == 0) return i;
+                    }
+                }
+            }
+        }
+        return -1;
+    }
+
+    private static List<String> splitColumnDefinitionsSafely(String block) {
+        List<String> parts = new ArrayList<>();
+        StringBuilder current = new StringBuilder();
+        int depth = 0;
+        boolean inString = false;
+        char stringChar = 0;
+        boolean inBacktick = false;
+
+        for (int i = 0; i < block.length(); i++) {
+            char c = block.charAt(i);
+
+            if (!inString) {
+                if (c == '`') {
+                    inBacktick = !inBacktick;
+                    current.append(c);
+                    continue;
+                }
+            }
+
+            if (!inBacktick) {
+                if (c == '\'' || c == '"') {
+                    if (!inString) {
+                        inString = true;
+                        stringChar = c;
+                    } else if (c == stringChar) {
+                        if (c == '\'' && i + 1 < block.length() && block.charAt(i + 1) == '\'') {
+                            current.append(c);
+                            i++;
+                        } else {
+                            inString = false;
+                        }
+                    }
+                    current.append(c);
+                    continue;
+                }
+
+                if (!inString) {
+                    if (c == '(') depth++;
+                    else if (c == ')') depth = Math.max(0, depth - 1);
+                }
+            }
+
+            if (!inString && !inBacktick && depth == 0 && c == ',') {
+                parts.add(current.toString());
+                current.setLength(0);
+            } else {
+                current.append(c);
+            }
+        }
+        if (current.length() > 0) parts.add(current.toString());
+        return parts;
+    }
+
+    private static boolean isConstraintDefinition(String def) {
+        String up = def.trim().toUpperCase();
+        return up.startsWith("PRIMARY KEY") ||
+               up.startsWith("KEY") ||
+               up.startsWith("INDEX") ||
+               up.startsWith("UNIQUE") ||
+               up.startsWith("FOREIGN KEY") ||
+               up.startsWith("CONSTRAINT");
+    }
+
+    private static String extractDefaultValue(String remaining) {
+        try {
+            Pattern pattern = Pattern.compile(
+                "DEFAULT\\s+(?:'((?:''|[^'])*)'|\"((?:\\\\\"|[^\"])*)\"|([^\\s,]+))",
+                Pattern.CASE_INSENSITIVE);
+            Matcher matcher = pattern.matcher(remaining);
+            if (matcher.find()) {
+                String v1 = matcher.group(1);
+                String v2 = matcher.group(2);
+                String v3 = matcher.group(3);
+                if (v1 != null) return v1.replace("''", "'");
+                if (v2 != null) return v2;
+                return v3;
+            }
+        } catch (Exception e) {
+            log.debug("提取默认值失败: {}", remaining);
+        }
+        return null;
+    }
+
+    private static String extractComment(String remaining) {
+        try {
+            Pattern singleQuoted = Pattern.compile("COMMENT\\s+'((?:''|[^'])*)'", Pattern.CASE_INSENSITIVE);
+            Pattern doubleQuoted = Pattern.compile("COMMENT\\s+\"([^\"]*)\"", Pattern.CASE_INSENSITIVE);
+            Matcher m1 = singleQuoted.matcher(remaining);
+            if (m1.find()) {
+                return m1.group(1).replace("''", "'");
+            }
+            Matcher m2 = doubleQuoted.matcher(remaining);
+            if (m2.find()) {
+                return m2.group(1);
+            }
+        } catch (Exception e) {
+            log.debug("提取注释失败: {}", remaining);
+        }
+        return null;
     }
     
     /**

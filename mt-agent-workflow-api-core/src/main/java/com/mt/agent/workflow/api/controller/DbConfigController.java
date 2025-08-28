@@ -68,7 +68,6 @@ public class DbConfigController {
             
             Page<DbConfig> page = new Page<>(current, size);
             LambdaQueryWrapper<DbConfig> qw = new LambdaQueryWrapper<>();
-            // qw.eq(DbConfig::getUserId, userId); // 移除用户ID过滤
             if (name != null && !name.isEmpty()) {
                 qw.like(DbConfig::getName, name);
             }
@@ -120,10 +119,6 @@ public class DbConfigController {
     public Result<Boolean> deleteConfig(@PathVariable Long id, HttpServletRequest request) {
         try {
             Long userId = 1L;
-
-            
-
-            
             // 删除配置
             boolean deleted = dbConfigService.deleteConfig(userId, id);
             return deleted ? Result.success(true) : Result.error("删除失败");
@@ -155,7 +150,7 @@ public class DbConfigController {
     }
     
     /**
-     * 重新加密数据库密码（用于修复密钥不一致问题）
+     * 重新加密数据库密码（修复密钥不一致）
      */
     @PostMapping("/config/{id}/re-encrypt")
     public Result<Boolean> reEncryptPassword(

@@ -17,8 +17,8 @@ const routes = [
     children: [
       {
         path: 'chat',
-        name: 'DataChat',
-        component: () => import('../views/DataChat.vue')
+        name: 'DataQuestionView',
+        component: () => import('../views/DataQuestionView.vue')
       },
       {
         path: 'chat-interface',

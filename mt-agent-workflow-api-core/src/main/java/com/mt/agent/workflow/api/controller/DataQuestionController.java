@@ -99,7 +99,7 @@ public class DataQuestionController {
             log.info("📊 [数据问答] 已将dbConfigId={}存入缓存，用户ID={}", dbConfigId, userIdStr);
             
             // 调用编排服务处理数据问答
-            DataQuestionResponse response = orchestratorService.processDataQuestionSync(sessionId, userId, question, dbConfigId, tableId);
+            DataQuestionResponse response = orchestratorService.processDataQuestionSync(sessionId, userId, question, dbConfigId, tableId, tableName);
             
             // 调用兜底回复服务
             try {

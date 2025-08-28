@@ -1,6 +1,7 @@
 package com.mt.agent.workflow.api.service.impl;
 
 import com.mt.agent.workflow.api.dto.PythonExecutionResult;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.mt.agent.workflow.api.entity.ChatMessage;
 import com.mt.agent.workflow.api.entity.ChatSession;
 import com.mt.agent.workflow.api.mapper.ChatMessageMapper;
@@ -940,14 +941,14 @@ public class PythonDirectExecutorService implements PythonExecutorService {
             
             // 获取当前会话的上下文信息
             String userIdentifier = "user_" + userId;
-            log.debug("🔍 [SQL生成] 获取python代码的用户id: {}", userId);
             String pythonCode = bufferUtil.getPythonCode(userIdentifier);
 //            log.info("🔍 [SQL生成] 开始生成SQL: pythonCode={}, userID={}", pythonCode, userId);
             String historyStr = getHistoryFromUserId(userId);
             String question = getCurrentQuestionFromUserId(userId);
             
             // 获取表结构信息
-            String tableSchema = getTableSchemaInfo(dbConfigId, tableName);
+            String tableSchema = getTableSchemaInfo(dbConfigId, tableName, userId);
+            log.info("🔍 [SQL生成] 获取的tableSchema={}", tableSchema);
             
             // 调用AI服务生成SQL
             String generatedSQL = aiSqlQueryService.generateSQL(
@@ -973,8 +974,36 @@ public class PythonDirectExecutorService implements PythonExecutorService {
      */
     private String getHistoryFromUserId(String userId) {
         try {
-            // 从会话中获取历史消息，这里简化处理
-            return bufferUtil.getField(userId, "history_context");
+            // 尝试从缓存获取历史对话上下文
+            String historyContext = bufferUtil.getField(userId, "history_context");
+            if (historyContext != null && !historyContext.trim().isEmpty()) {
+                return historyContext;
+            }
+            
+            // 如果缓存中没有，尝试从当前会话ID获取历史对话
+            String sessionIdStr = bufferUtil.getField(userId, "current_session_id");
+            if (sessionIdStr != null) {
+                Long sessionId = Long.parseLong(sessionIdStr);
+                List<ChatMessage> messages = messageMapper.selectList(
+                    new LambdaQueryWrapper<ChatMessage>()
+                        .eq(ChatMessage::getSessionId, sessionId)
+                        .eq(ChatMessage::getRole, "user")
+                        .eq(ChatMessage::getStatus, 1)
+                        .orderByDesc(ChatMessage::getCreatedAtMs)
+                        .last("LIMIT 3")
+                );
+                
+                if (!messages.isEmpty()) {
+                    StringBuilder history = new StringBuilder();
+                    for (int i = messages.size() - 1; i >= 0; i--) {
+                        if (history.length() > 0) {
+                            history.append("\n");
+                        }
+                        history.append(messages.get(i).getContent());
+                    }
+                    return history.toString();
+                }
+            }
         } catch (Exception e) {
             log.debug("获取历史对话失败: {}", e.getMessage());
         }
@@ -986,9 +1015,28 @@ public class PythonDirectExecutorService implements PythonExecutorService {
      */
     private String getCurrentQuestionFromUserId(String userId) {
         try {
-            ChatMessage message = messageMapper.selectById(Long.parseLong(userId));
-            if (message != null && message.getContent() != null) {
-                return message.getContent();
+            // 从缓存中获取当前问题
+            String currentQuestion = bufferUtil.getField(userId, "current_question");
+            if (currentQuestion != null && !currentQuestion.trim().isEmpty()) {
+                return currentQuestion;
+            }
+            
+            // 如果缓存中没有，尝试从当前会话获取最新的用户消息
+            String sessionIdStr = bufferUtil.getField(userId, "current_session_id");
+            if (sessionIdStr != null) {
+                Long sessionId = Long.parseLong(sessionIdStr);
+                List<ChatMessage> messages = messageMapper.selectList(
+                    new LambdaQueryWrapper<ChatMessage>()
+                        .eq(ChatMessage::getSessionId, sessionId)
+                        .eq(ChatMessage::getRole, "user")
+                        .eq(ChatMessage::getStatus, 1)
+                        .orderByDesc(ChatMessage::getCreatedAtMs)
+                        .last("LIMIT 1")
+                );
+                
+                if (!messages.isEmpty()) {
+                    return messages.get(0).getContent();
+                }
             }
         } catch (Exception e) {
             log.debug("获取当前问题失败: {}", e.getMessage());
@@ -1000,12 +1048,10 @@ public class PythonDirectExecutorService implements PythonExecutorService {
      * 获取表结构信息
      * 优先从缓存中获取TableSchema，如果缓存中没有则回退到SchemaContextService
      */
-    private String getTableSchemaInfo(Long dbConfigId, String tableName) {
+    private String getTableSchemaInfo(Long dbConfigId, String tableName,  String userId) {
         try {
-//            log.info("🔍 [SQL生成] 获取表结构信息: dbConfigId={}, tableName={}", dbConfigId, tableName);
-            
             // 优先从缓存中获取TableSchema
-            String cachedTableSchema = bufferUtil.getField("1", "TableSchema_result");
+            String cachedTableSchema = bufferUtil.getField(userId, "TableSchema_result");
 //            log.info("tableName={}", cachedTableSchema);
             if (cachedTableSchema != null && !cachedTableSchema.trim().isEmpty()) {
 //                log.info("🔍 [SQL生成] 成功从缓存获取TableSchema，长度: {}", cachedTableSchema.length());

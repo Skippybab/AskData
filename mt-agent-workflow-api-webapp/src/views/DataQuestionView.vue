@@ -31,7 +31,7 @@
             :class="{ active: currentSession?.id === session.id }"
             @click="switchToSession(session)"
           >
-            <div class="session-name">{{ session.sessionName }}</div>
+            <div class="session-name">{{ getDisplaySessionName(session) }}</div>
             <div class="session-meta">
               <span class="session-time">{{ formatSessionTime(session.lastMessageAtMs || session.createdAtMs) }}</span>
               <span class="session-count">{{ session.messageCount || 0 }}条</span>
@@ -44,15 +44,26 @@
       </div>
       
       <!-- 主要内容区域 -->
-      <div class="content-area" :class="{ 'with-sidebar': showSessionList }">
-        <!-- 会话信息 -->
-        <div class="session-info" v-if="currentSession">
-          <span>当前会话: {{ currentSession.sessionName }}</span>
-          <span v-if="currentDatabase">数据库: {{ currentDatabase.name }}</span>
-          <span v-if="selectedTable">表: {{ selectedTable }}</span>
-        </div>
+      <div class="chat-body">
+        <!-- 聊天主体区域 -->
+        <div class="chat-main">
+          <!-- 会话信息 -->
+          <div class="session-info" v-if="currentSession">
+            <div class="session-basic-info">
+              <i class="el-icon-chat-dot-round"></i>
+              <span class="session-title">{{ getDisplaySessionName(currentSession) }}</span>
+              <el-tag v-if="currentDatabase" size="small" type="info">
+                <i class="el-icon-coin"></i>
+                {{ currentDatabase.name }}
+              </el-tag>
+            </div>
+            <div v-if="selectedTables.length > 0" class="session-tables-info">
+              <i class="el-icon-table"></i>
+              <span>已选择 {{ selectedTables.length }} 个表: {{ getSelectedTableNames() }}</span>
+            </div>
+          </div>
 
-        <!-- 消息列表 -->
+          <!-- 消息列表 -->
         <div class="messages-container" ref="messagesContainer">
         <div v-for="(msg, index) in messages" :key="index" class="message-item" :class="msg.role">
           <div class="message-content">
@@ -159,43 +170,158 @@
         </div>
       </div>
 
-        <!-- 输入区域 -->
-        <div class="input-area">
-        <el-select 
-          v-model="selectedDatabase" 
-          placeholder="选择数据库" 
-          @change="onDatabaseChange"
-          style="width: 250px; margin-right: 10px"
-        >
-          <el-option 
-            v-for="db in databases" 
-            :key="db.id" 
-            :label="db.name" 
-            :value="db.id"
-          >
-            <span style="float: left">{{ db.name }}</span>
-            <span style="float: right; color: #8492a6; font-size: 13px">
-              <i v-if="db.connectionStatus === 'checking'" class="el-icon-loading" style="color: #409eff"></i>
-              <i v-else-if="db.connectionStatus === 'connected'" class="el-icon-success" style="color: #67c23a"></i>
-              <i v-else-if="db.connectionStatus === 'failed'" class="el-icon-error" style="color: #f56c6c"></i>
-            </span>
-          </el-option>
-        </el-select>
+          <!-- 输入区域 -->
+          <div class="input-area">
+            <!-- 数据库选择器 - 仅在没有会话时显示 -->
+            <div v-if="!currentSession" class="database-selection">
+              <el-select 
+                v-model="selectedDatabase" 
+                placeholder="请先选择数据库创建会话" 
+                @change="onDatabaseChange"
+                style="width: 350px; margin-right: 10px"
+                size="large"
+              >
+                <el-option 
+                  v-for="db in databases" 
+                  :key="db.id" 
+                  :label="db.name" 
+                  :value="db.id"
+                >
+                  <span style="float: left">{{ db.name }}</span>
+                  <span style="float: right; color: #8492a6; font-size: 13px">
+                    <i v-if="db.connectionStatus === 'checking'" class="el-icon-loading" style="color: #409eff"></i>
+                    <i v-else-if="db.connectionStatus === 'connected'" class="el-icon-success" style="color: #67c23a"></i>
+                    <i v-else-if="db.connectionStatus === 'failed'" class="el-icon-error" style="color: #f56c6c"></i>
+                  </span>
+                </el-option>
+              </el-select>
+              <el-button type="primary" @click="createSession" :disabled="!selectedDatabase" size="large">
+                创建会话
+              </el-button>
+            </div>
+            
+            <!-- 会话交互区域 - 仅在有会话时显示 -->
+            <div v-if="currentSession" class="session-interaction">
+              <el-select 
+                v-model="selectedTables" 
+                placeholder="选择表（可多选）- 支持多选" 
+                multiple 
+                clearable 
+                collapse-tags
+                collapse-tags-tooltip
+                style="width: 300px; margin-right: 10px" 
+                @change="onTableSelectionChange"
+              >
+                <el-option v-for="table in tables" :key="table.id" :label="table.name" :value="table.id">
+                  <span style="float: left">{{ table.name }}</span>
+                  <span style="float: right; color: #8492a6; font-size: 13px">
+                    <i class="el-icon-table" style="color: #409eff"></i>
+                  </span>
+                </el-option>
+              </el-select>
+              
+              <el-input
+                v-model="inputMessage"
+                placeholder="请输入您的问题..."
+                @keyup.enter="sendMessage"
+                :disabled="isLoading"
+                style="flex: 1; margin-right: 10px"
+              />
+              
+              <el-button type="primary" @click="sendMessage" :disabled="isLoading || !inputMessage.trim()">
+                发送
+              </el-button>
+            </div>
+          </div>
+        </div>
         
-        <el-select v-model="selectedTable" placeholder="选择表（可选）" clearable style="width: 200px">
-          <el-option v-for="table in tables" :key="table.id" :label="table.name" :value="table.id" />
-        </el-select>
-        
-        <el-input
-          v-model="inputMessage"
-          placeholder="请输入您的问题..."
-          @keyup.enter="sendMessage"
-          :disabled="isLoading || !currentSession"
-        />
-        
-        <el-button type="primary" @click="sendMessage" :disabled="isLoading || !currentSession">
-          发送
-        </el-button>
+        <!-- 右侧工具栏 -->
+        <div class="chat-sidebar">
+          <div class="sidebar-header">
+            <h3>
+              <i class="el-icon-data-board" style="margin-right: 8px; color: #409eff;"></i>
+              表信息面板
+            </h3>
+            <el-button type="text" @click="refreshTableInfo" :loading="tableInfoLoading" icon="el-icon-refresh" size="small">
+              刷新
+            </el-button>
+          </div>
+          
+          <div class="sidebar-content">
+            <!-- 表选择提示 -->
+            <div class="table-selection-hint" v-if="selectedTables.length === 0">
+              <div class="hint-content">
+                <i class="el-icon-info" style="color: #409eff; margin-right: 8px;"></i>
+                <span>请选择表以查看详细信息</span>
+              </div>
+            </div>
+            
+            <!-- 已启用的表信息 -->
+            <div class="table-info-section">
+              <div class="section-title">
+                <i class="el-icon-table"></i>
+                可调用表的信息
+                <el-tooltip content="用于大模型理解的表结构信息" placement="top">
+                  <i class="el-icon-question" style="margin-left: 8px; color: #999; cursor: help;"></i>
+                </el-tooltip>
+              </div>
+              <div class="section-content">
+                <el-scrollbar height="200px">
+                  <div v-if="currentTableInfo && currentTableInfo !== '暂无表信息'" class="info-container">
+                    <pre class="table-info-content">{{ currentTableInfo }}</pre>
+                  </div>
+                  <div v-else class="empty-content">
+                    <i class="el-icon-document"></i>
+                    <p>{{ currentTableInfo || '暂无表信息' }}</p>
+                  </div>
+                </el-scrollbar>
+              </div>
+            </div>
+            
+            <!-- 具体表信息 -->
+            <div class="table-schema-section">
+              <div class="section-title">
+                <i class="el-icon-data-board"></i>
+                用于SQL执行器的详细表信息
+                <el-tooltip content="用于SQL执行器的详细表结构" placement="top">
+                  <i class="el-icon-question" style="margin-left: 8px; color: #999; cursor: help;"></i>
+                </el-tooltip>
+              </div>
+              <div class="section-content">
+                <el-scrollbar height="200px">
+                  <div v-if="currentTableSchema && currentTableSchema !== '暂无表结构信息'" class="info-container">
+                    <pre class="table-schema-content">{{ currentTableSchema }}</pre>
+                  </div>
+                  <div v-else class="empty-content">
+                    <i class="el-icon-document"></i>
+                    <p>{{ currentTableSchema || '暂无表结构信息' }}</p>
+                  </div>
+                </el-scrollbar>
+              </div>
+            </div>
+            
+            <!-- 选中表统计 -->
+            <div class="table-stats-section" v-if="selectedTables.length > 0">
+              <div class="section-title">
+                <i class="el-icon-pie-chart"></i>
+                选中表统计
+              </div>
+              <div class="section-content">
+                <div class="stats-item">
+                  <span class="stats-label">选中表数量:</span>
+                  <span class="stats-value">{{ selectedTables.length }}</span>
+                </div>
+                <div class="stats-item">
+                  <span class="stats-label">表名列表:</span>
+                  <div class="table-list">
+                    <el-tag v-for="table in getSelectedTablesDetails()" :key="table.id" size="small" style="margin: 2px;">
+                      {{ table.name }}
+                    </el-tag>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -210,7 +336,7 @@ import { ElMessage } from 'element-plus'
 const currentSession = ref(null)
 const messages = ref([])
 const inputMessage = ref('')
-const selectedTable = ref(null)
+const selectedTables = ref([])
 const selectedDatabase = ref(null)
 const tables = ref([])
 const databases = ref([])
@@ -222,6 +348,11 @@ const loadingText = ref('正在思考...')
 const historySessions = ref([])
 const showSessionList = ref(false)
 const sessionLoading = ref(false)
+
+// 右侧工具栏状态
+const currentTableInfo = ref('')
+const currentTableSchema = ref('')
+const tableInfoLoading = ref(false)
 
 // 加载历史会话列表
 const loadHistorySessions = async () => {
@@ -269,7 +400,7 @@ const switchToSession = async (session) => {
     // 关闭会话列表
     showSessionList.value = false
     
-    ElMessage.success('切换到会话: ' + session.sessionName)
+    ElMessage.success('切换到会话: ' + getDisplaySessionName(session))
   } catch (error) {
     console.error('切换会话失败', error)
     ElMessage.error('切换会话失败')
@@ -352,6 +483,27 @@ const formatSessionTime = (timestamp) => {
   }
 }
 
+// 获取显示用的会话名称
+const getDisplaySessionName = (session) => {
+  if (!session) return ''
+  
+  // 如果会话名称包含时间戳，尝试简化显示
+  let displayName = session.sessionName || `会话 ${session.id}`
+  
+  // 移除可能的"-1"等后缀
+  displayName = displayName.replace(/\s*-\s*\d+\s*$/, '')
+  
+  // 如果是默认生成的名称，尝试简化
+  if (displayName.includes('数据问答会话')) {
+    const timeMatch = displayName.match(/(\d{4}\/\d{2}\/\d{2}\s+\d{2}:\d{2})/)
+    if (timeMatch) {
+      return `数据问答会话 ${timeMatch[1]}`
+    }
+  }
+  
+  return displayName
+}
+
 // 加载数据库配置列表
 const loadDatabases = async () => {
   try {
@@ -419,7 +571,13 @@ const createSession = async () => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        sessionName: '新对话 ' + new Date().toLocaleString(),
+        sessionName: '数据问答会话 ' + new Date().toLocaleString('zh-CN', { 
+          year: 'numeric', 
+          month: '2-digit', 
+          day: '2-digit', 
+          hour: '2-digit', 
+          minute: '2-digit' 
+        }),
         dbConfigId: selectedDatabase.value
       })
     })
@@ -444,10 +602,12 @@ const createSession = async () => {
   }
 }
 
-// 当数据库选择改变时，重新创建会话
+// 当数据库选择改变时的处理
 const onDatabaseChange = () => {
-  if (selectedDatabase.value) {
-    createSession()
+  // 如果已有会话，不自动创建新会话，需要用户手动点击创建
+  if (!currentSession.value && selectedDatabase.value) {
+    // 仅在没有会话时才允许选择数据库
+    console.log('数据库已选择:', selectedDatabase.value)
   }
 }
 
@@ -460,6 +620,8 @@ const loadTables = async () => {
     const result = await response.json()
     if (result.code === 200) {
       tables.value = result.data
+      // 表列表加载完成后，自动加载表信息
+      await loadTableInfo()
     }
   } catch (error) {
     console.error('加载表列表失败', error)
@@ -514,12 +676,12 @@ const sendMessage = async () => {
       headers: {
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({
-        sessionId: currentSession.value.id,
-        question: question,
-        dbConfigId: currentSession.value.dbConfigId,
-        tableId: selectedTable.value || null
-      })
+              body: JSON.stringify({
+          sessionId: currentSession.value.id,
+          question: question,
+          dbConfigId: currentSession.value.dbConfigId,
+          tableIds: selectedTables.value.length > 0 ? selectedTables.value : null
+        })
     })
     
     if (!response.ok) {
@@ -602,8 +764,6 @@ const sendMessage = async () => {
   }
 }
 
-// SSE相关函数已删除，现在使用阻塞式通信
-
 // 复制结果
 const copyResult = (result) => {
   navigator.clipboard.writeText(result)
@@ -644,6 +804,86 @@ const updateLoadingText = () => {
 // 格式化时间
 const formatTime = (date) => {
   return new Date(date).toLocaleTimeString('zh-CN')
+}
+
+// 获取选中表的名称
+const getSelectedTableNames = () => {
+  if (selectedTables.value.length === 0) return ''
+  
+  const selectedNames = tables.value
+    .filter(table => selectedTables.value.includes(table.id))
+    .map(table => table.name)
+  
+  if (selectedNames.length <= 3) {
+    return selectedNames.join(', ')
+  } else {
+    return selectedNames.slice(0, 3).join(', ') + ` 等${selectedNames.length}个表`
+  }
+}
+
+// 获取选中表的详细信息
+const getSelectedTablesDetails = () => {
+  return tables.value.filter(table => selectedTables.value.includes(table.id))
+}
+
+// 表选择变化时的处理
+const onTableSelectionChange = () => {
+  console.log('表选择变化:', selectedTables.value)
+  // 当表选择变化时，刷新表信息
+  if (currentSession.value && currentSession.value.dbConfigId) {
+    loadTableInfo()
+  }
+}
+
+// 加载表信息
+const loadTableInfo = async () => {
+  if (!currentSession.value || !currentSession.value.dbConfigId) {
+    return
+  }
+  
+  try {
+    tableInfoLoading.value = true
+    
+    const requestBody = {
+      dbConfigId: currentSession.value.dbConfigId
+    }
+    
+    // 如果有选中的表，则只获取选中表的信息
+    if (selectedTables.value.length > 0) {
+      requestBody.tableIds = selectedTables.value
+    }
+    
+    const response = await fetch('/api/table-info/formatted-info', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(requestBody)
+    })
+    
+    const result = await response.json()
+    
+    if (result.code === 200 && result.data) {
+      currentTableInfo.value = result.data.tableInfo || '暂无表信息'
+      currentTableSchema.value = result.data.tableSchema || '暂无表结构信息'
+    } else {
+      currentTableInfo.value = '获取表信息失败'
+      currentTableSchema.value = '获取表结构信息失败'
+      console.error('获取表信息失败:', result.message)
+    }
+  } catch (error) {
+    console.error('加载表信息失败:', error)
+    currentTableInfo.value = '加载表信息时出错'
+    currentTableSchema.value = '加载表结构信息时出错'
+    ElMessage.error('加载表信息失败')
+  } finally {
+    tableInfoLoading.value = false
+  }
+}
+
+// 刷新表信息
+const refreshTableInfo = () => {
+  loadTableInfo()
 }
 
 // 格式化文件大小
@@ -696,8 +936,161 @@ onMounted(async () => {
     flex: 1;
     display: flex;
     overflow: hidden;
+  }
+  
+  .chat-body {
+    flex: 1;
+    display: flex;
+    overflow: hidden;
+  }
+  
+  .chat-main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  
+  .chat-sidebar {
+    width: 350px;
+    background: white;
+    border-left: 1px solid #e8e8e8;
+    display: flex;
+    flex-direction: column;
     
-    .session-sidebar {
+    .sidebar-header {
+      padding: 15px 20px;
+      border-bottom: 1px solid #e8e8e8;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      
+      h3 {
+        margin: 0;
+        font-size: 16px;
+        color: #333;
+      }
+    }
+    
+    .sidebar-content {
+      flex: 1;
+      padding: 15px 20px;
+      overflow-y: auto;
+      
+      .table-selection-hint {
+        margin-bottom: 20px;
+        padding: 15px;
+        background: #f0f9ff;
+        border: 1px solid #bfdbfe;
+        border-radius: 6px;
+        
+        .hint-content {
+          display: flex;
+          align-items: center;
+          color: #1e40af;
+          font-size: 14px;
+        }
+      }
+      
+      .table-info-section,
+      .table-schema-section,
+      .table-stats-section {
+        margin-bottom: 20px;
+        border: 1px solid #e8e8e8;
+        border-radius: 6px;
+        overflow: hidden;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        
+        .section-title {
+          padding: 10px 15px;
+          background: #f8f9fa;
+          font-size: 14px;
+          font-weight: 600;
+          color: #495057;
+          border-bottom: 1px solid #e8e8e8;
+          
+          i {
+            margin-right: 8px;
+            color: #6c757d;
+          }
+        }
+        
+        .section-content {
+          padding: 15px;
+          
+          .info-container {
+            .table-info-content,
+            .table-schema-content {
+              font-size: 12px;
+              line-height: 1.4;
+              color: #495057;
+              background: #f8f9fa;
+              padding: 10px;
+              border-radius: 4px;
+              margin: 0;
+              font-family: 'Monaco', 'Consolas', monospace;
+              word-break: break-all;
+              white-space: pre-wrap;
+              border: 1px solid #e9ecef;
+            }
+          }
+          
+          .empty-content {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 40px 20px;
+            color: #999;
+            background: #fafafa;
+            border-radius: 4px;
+            
+            i {
+              font-size: 48px;
+              margin-bottom: 16px;
+              color: #d0d0d0;
+            }
+            
+            p {
+              margin: 0;
+              font-size: 14px;
+              color: #666;
+            }
+          }
+          
+          .stats-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+            
+            &:last-child {
+              margin-bottom: 0;
+            }
+            
+            .stats-label {
+              font-size: 14px;
+              color: #6c757d;
+              min-width: 80px;
+            }
+            
+            .stats-value {
+              font-size: 14px;
+              font-weight: 600;
+              color: #495057;
+            }
+            
+            .table-list {
+              flex: 1;
+              margin-left: 10px;
+            }
+          }
+        }
+      }
+    }
+  }
+  
+  .session-sidebar {
       width: 300px;
       background: white;
       border-right: 1px solid #e8e8e8;
@@ -780,26 +1173,60 @@ onMounted(async () => {
       }
     }
     
-    .content-area {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      overflow: hidden;
+    .session-info {
+      padding: 15px 20px;
+      background: #f8f9fa;
+      border-bottom: 1px solid #e8e8e8;
       
-      &.with-sidebar {
-        border-left: 1px solid #e8e8e8;
+      .session-basic-info {
+        display: flex;
+        align-items: center;
+        margin-bottom: 8px;
+        
+        i {
+          color: #409eff;
+          margin-right: 8px;
+          font-size: 16px;
+        }
+        
+        .session-title {
+          font-size: 14px;
+          font-weight: 600;
+          color: #333;
+          margin-right: 12px;
+        }
+      }
+      
+      .session-tables-info {
+        display: flex;
+        align-items: center;
+        font-size: 13px;
+        color: #666;
+        
+        i {
+          color: #67c23a;
+          margin-right: 6px;
+        }
       }
     }
     
-    .session-info {
-      padding: 10px 20px;
-      background: #fafafa;
-      border-bottom: 1px solid #e8e8e8;
-      font-size: 14px;
-      color: #666;
+    .input-area {
+      padding: 15px 20px;
+      background: white;
+      border-top: 1px solid #e8e8e8;
       
-      span {
-        margin-right: 20px;
+      .database-selection {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        gap: 15px;
+        padding: 20px 0;
+      }
+      
+      .session-interaction {
+        display: flex;
+        align-items: center;
+        gap: 10px;
       }
     }
     
@@ -1005,19 +1432,6 @@ onMounted(async () => {
         }
       }
     }
-    
-    .input-area {
-      padding: 15px 20px;
-      background: white;
-      border-top: 1px solid #e8e8e8;
-      display: flex;
-      gap: 10px;
-      align-items: center;
-      
-      .el-input {
-        flex: 1;
-      }
-    }
+
   }
-}
 </style>
