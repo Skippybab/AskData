@@ -174,7 +174,7 @@ public class PythonDirectExecutorService implements PythonExecutorService {
         
         // 验证dbConfigId是否有效
         if (dbConfigId == null) {
-//            log.error("🔍 [Python执行] dbConfigId为null, messageId: {}", messageId);
+            log.error("🔍 [Python执行] dbConfigId为null, messageId: {}", messageId);
             return PythonExecutionResult.failure("数据库配置ID为空", "INVALID_DB_CONFIG");
         }
         
@@ -186,13 +186,13 @@ public class PythonDirectExecutorService implements PythonExecutorService {
             // 1. 获取消息和Python代码
             ChatMessage message = messageMapper.selectById(messageId);
             if (message == null) {
-//                log.error("🔍 [Python执行] 未找到消息, messageId: {}", messageId);
+                log.error("🔍 [Python执行] 未找到消息, messageId: {}", messageId);
                 return PythonExecutionResult.failure("未找到消息", "MESSAGE_NOT_FOUND");
             }
 
             String pythonCode = message.getPythonCode();
             if (pythonCode == null || pythonCode.trim().isEmpty()) {
-//                log.error("🔍 [Python执行] Python代码为空, messageId: {}", messageId);
+                log.error("🔍 [Python执行] Python代码为空, messageId: {}", messageId);
                 return PythonExecutionResult.failure("Python代码为空", "EMPTY_CODE");
             }
 
@@ -204,29 +204,22 @@ public class PythonDirectExecutorService implements PythonExecutorService {
             // 将dbConfigId存储到缓冲区，供后续使用
             bufferUtil.setField(userId.toString(),"dbConfigId", dbConfigId.toString(), -1, TimeUnit.DAYS);
 //            log.info("🔍 [Python执行] 已将dbConfigId={}存储到用户{}的缓存中", dbConfigId, userId);
-            
             tempDir = createPythonEnvironment(paramMap);
-
             // 3. 生成完整的main.py文件
             createMainPythonFile(tempDir, pythonCode);
-
-//            log.info("🔍 [Python执行] 启动Python进程执行代码");
-
             // 4. 启动Python进程
             pythonProcess = startPythonProcess(tempDir);
-
             // 5. 处理Python进程的输入输出
             handlePythonExecution(pythonProcess, userId.toString());
 
             // 6. 等待执行完成
             boolean finished = pythonProcess.waitFor(300, TimeUnit.SECONDS);
             if (!finished) {
-//                log.error("🔍 [Python执行] Python代码执行超时（300秒）");
+                log.error("🔍 [Python执行] Python代码执行超时（300秒）");
                 return PythonExecutionResult.failure("Python代码执行超时（300秒）", "TIMEOUT");
             }
 
             int exitCode = pythonProcess.exitValue();
-//            log.info("🔍 [Python执行] Python进程执行完成, 退出码: {}", exitCode);
             
             if (exitCode != 0) {
                 // 根据错误输出和退出码分析异常类型
@@ -237,15 +230,15 @@ public class PythonDirectExecutorService implements PythonExecutorService {
 
             // 7. 获取执行结果
             String result = bufferUtil.getField(userId.toString(), "result");
-//            String outputResult = bufferUtil.getOutputResult(userId.toString());
             if (result != null && !result.trim().isEmpty()) {
+                // TODO：捋清楚 Output_result 和 execution_result
+                String outputResult = bufferUtil.getOutputResult(userId.toString());
                 log.info("🔍 [Python执行] 使用output_result结果: {}", result);
             } else {
                 // 如果没有output_result，回退到execution_result
                 result = bufferUtil.getField(userId.toString(), "execution_result");
                 log.info("🔍 [Python执行] 使用execution_result结果: {}", result);
             }
-//            log.info("🔍 [Python执行] Python代码执行完成, 结果长度: {}", result != null ? result.length() : 0);
 
             return PythonExecutionResult.success(result);
 

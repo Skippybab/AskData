@@ -166,7 +166,6 @@ public class ChatOrchestratorServiceImpl implements ChatOrchestratorService {
                         tableableSchema = tableInfoService.getStandardTableNameForExecutor(dbConfigId, tableId, userId);
                     } else {
                         // 如果没有指定表ID，获取所有启用的表信息
-                        log.info("🔍 [数据问答] 获取所有启用表的信息");
                         tableInfo = tableInfoService.getEnabledTablesFormattedForDify(dbConfigId, userId);
                         tableableSchema = tableInfoService.getEnabledTablesFormattedForExecutor(dbConfigId, userId);
                     }

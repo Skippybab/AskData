@@ -189,10 +189,6 @@ CREATE TABLE `sql_execution` (
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='SQL执行记录表';
 
-
-
-
-
 -- ----------------------------
 -- Table structure for sql_guard_policy
 -- ----------------------------

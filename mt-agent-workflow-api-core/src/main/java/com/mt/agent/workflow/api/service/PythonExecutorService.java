@@ -29,7 +29,7 @@ public interface PythonExecutorService {
     Object executePythonCodeWithResult(String pythonCode, HashMap<String, Object> paramMap, String userId);
     
     /**
-     * 执行Python代码并返回结果（新版本）
+     * 执行Python代码并返回结果
      * @param messageId 消息ID
      * @param dbConfigId 数据库配置ID
      * @return 执行结果

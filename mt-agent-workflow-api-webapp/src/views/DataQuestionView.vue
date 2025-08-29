@@ -221,10 +221,12 @@
                 style="width: 300px; margin-right: 10px" 
                 @change="onTableSelectionChange"
               >
-                <el-option v-for="table in tables" :key="table.id" :label="table.name" :value="table.id">
-                  <span style="float: left">{{ table.name }}</span>
+                <el-option v-for="table in tables" :key="table.id" :label="table.tableName" :value="table.id">
+                  <span style="float: left">{{ table.tableName }}</span>
                   <span style="float: right; color: #8492a6; font-size: 13px">
                     <i class="el-icon-table" style="color: #409eff"></i>
+                    <span v-if="table.enabled === 1" style="margin-left: 4px; color: #67c23a;">●</span>
+                    <span v-else style="margin-left: 4px; color: #f56c6c;">○</span>
                   </span>
                 </el-option>
               </el-select>
@@ -364,7 +366,7 @@
                   <span class="stats-label">表名列表:</span>
                   <div class="table-list">
                     <el-tag v-for="table in getSelectedTablesDetails()" :key="table.id" size="small" style="margin: 2px;">
-                      {{ table.name }}
+                      {{ table.tableName }}
                     </el-tag>
                   </div>
                 </div>
@@ -794,15 +796,23 @@ const loadTables = async () => {
   if (!currentSession.value) return
   
   try {
+    console.log('开始加载表列表 - dbConfigId:', currentSession.value.dbConfigId)
     const response = await fetch(`/api/table-info/list?dbConfigId=${currentSession.value.dbConfigId}`)
     const result = await response.json()
+    console.log('表列表API响应:', result)
+    
     if (result.code === 200) {
-      tables.value = result.data
+      tables.value = result.data || []
+      console.log('表列表加载成功，共', tables.value.length, '个表:', tables.value)
       // 表列表加载完成后，自动加载表信息
       await loadTableInfo()
+    } else {
+      console.error('表列表API返回错误:', result)
+      ElMessage.error(result.message || '获取表列表失败')
     }
   } catch (error) {
     console.error('加载表列表失败', error)
+    ElMessage.error('加载表列表失败: ' + error.message)
   }
 }
 
@@ -990,7 +1000,7 @@ const getSelectedTableNames = () => {
   
   const selectedNames = tables.value
     .filter(table => selectedTables.value.includes(table.id))
-    .map(table => table.name)
+    .map(table => table.tableName)
   
   if (selectedNames.length <= 3) {
     return selectedNames.join(', ')

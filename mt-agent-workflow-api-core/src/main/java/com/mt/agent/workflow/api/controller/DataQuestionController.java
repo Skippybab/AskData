@@ -109,9 +109,6 @@ public class DataQuestionController {
                 }
             }
             
-//            log.info("📊 [数据问答] 解析参数: sessionId={}, question={}, dbConfigId={}, tableIds={}, tableId={}, tableName={}",
-//                    sessionId, question, dbConfigId, tableIds, tableId, tableName);
-            
             // 参数验证
             if (question == null || question.trim().isEmpty()) {
                 log.error("📊 [数据问答] 问题内容为空");

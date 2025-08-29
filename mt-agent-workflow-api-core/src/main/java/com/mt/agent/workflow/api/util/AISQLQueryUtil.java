@@ -1581,14 +1581,14 @@ public class AISQLQueryUtil {
         fullPrompt = fullPrompt.replace("{{table_name}}", tableName != null ? tableName : "");
         fullPrompt = fullPrompt.replace("{{diag_history}}", diagHistory != null ? diagHistory : "");
         fullPrompt = fullPrompt.replace("{{question}}", question != null ? question : "");
-
         log.info("【定制任务执行】查询单行业数据SQL生成提示词: \n{}", fullPrompt);
+
         RequestConfig config = RequestConfig.defaultConfig();
         config.setTopP(0.01);
         config.setTemperature(0.0f);
         config.setAliModelType(AliModelType.QWEN_3_32B_INSTRUCT);
         String sql = aiService.chat(fullPrompt, config);
-        log.info("【定制任务执行】查询单行业数据SQL生成结果: \n{}", sql);
+        log.info("查询数据SQL生成结果: \n{}", sql);
         sql = sql.replace("```sql", "").replace("```SQL", "").replace("```", "").trim();
 
         // 验证SQL语句
@@ -1603,11 +1603,8 @@ public class AISQLQueryUtil {
                 sql.toLowerCase().contains("insert")) {
             throw new RuntimeException("不允许执行修改数据的SQL语句");
         }
-
         return sql;
     }
-
-
 
 
     /**

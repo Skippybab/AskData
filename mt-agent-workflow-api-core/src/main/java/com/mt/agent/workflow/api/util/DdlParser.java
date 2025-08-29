@@ -170,7 +170,8 @@ public class DdlParser {
 
             ColumnInfo info = new ColumnInfo();
             info.setColumnName(name);
-            info.setDataType(type.trim());
+            // 清理数据类型，去除括号内容
+            info.setDataType(cleanDataType(type.trim()));
 
             // NULL/NOT NULL
             boolean nullable = (indexOfIgnoreCase(remaining, "NOT NULL") < 0);
@@ -196,6 +197,29 @@ public class DdlParser {
 
     private static int indexOfIgnoreCase(String src, String needle) {
         return src.toLowerCase().indexOf(needle.toLowerCase());
+    }
+
+    /**
+     * 清理数据类型，去除括号内容和修饰符，只保留核心数据类型
+     * 例如：VARCHAR(255) -> VARCHAR, DOUBLE(15,2) -> DOUBLE, INT UNSIGNED -> INT
+     */
+    private static String cleanDataType(String rawType) {
+        if (rawType == null || rawType.trim().isEmpty()) {
+            return rawType;
+        }
+        
+        String cleanType = rawType.trim().toUpperCase();
+        
+        // 去除括号及其内容 (例如: VARCHAR(255) -> VARCHAR, DECIMAL(10,2) -> DECIMAL)
+        int parenIndex = cleanType.indexOf('(');
+        if (parenIndex > 0) {
+            cleanType = cleanType.substring(0, parenIndex).trim();
+        }
+        
+        // 去除常见的类型修饰符
+        cleanType = cleanType.replaceAll("\\s+(UNSIGNED|ZEROFILL|SIGNED|BINARY)$", "");
+        
+        return cleanType.trim();
     }
 
     private static int findMatchingParenEnd(String ddl, int startIndex) {
@@ -468,6 +492,24 @@ public class DdlParser {
         return columns;
     }
     
+    /**
+     * 测试数据类型清理功能
+     * 这个方法用于验证cleanDataType方法的正确性
+     */
+    public static void testCleanDataType() {
+        System.out.println("测试数据类型清理功能:");
+        String[] testCases = {
+            "VARCHAR(255)", "BIGINT(20)", "DECIMAL(10,2)", "DOUBLE(15,2)", 
+            "INT UNSIGNED", "CHAR(50)", "TEXT", "DATETIME", 
+            "FLOAT(7,4)", "TINYINT(1)", "MEDIUMTEXT", "LONGTEXT"
+        };
+        
+        for (String testCase : testCases) {
+            String cleaned = cleanDataType(testCase);
+            System.out.println(testCase + " -> " + cleaned);
+        }
+    }
+
     /**
      * 更新DDL中指定字段的注释
      */

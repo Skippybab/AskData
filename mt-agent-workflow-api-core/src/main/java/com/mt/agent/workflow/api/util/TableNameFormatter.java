@@ -47,7 +47,6 @@ public class TableNameFormatter {
             // 如果无法解析DDL，提供默认信息
             result.append("无法解析表结构，请检查DDL格式");
         }
-
         return result.toString();
     }
 

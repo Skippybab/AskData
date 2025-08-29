@@ -164,7 +164,6 @@ public class TableInfoService {
         queryWrapper.eq("enabled", 1);
         
         List<TableInfo> tableInfos = tableInfoMapper.selectList(queryWrapper);
-//        log.info("🔍 [TableInfoService] 查询到 {} 个指定表信息", tableInfos.size());
 
         // 使用TableNameFormatter格式化每个表的信息，确保符合Dify接口格式要求
         StringBuilder result = new StringBuilder();
@@ -181,9 +180,7 @@ public class TableInfoService {
                 result.append(formattedTableInfo);
             }
         }
-        
         String finalResult = result.toString();
-//        log.info("🔍 [TableInfoService] 生成的Dify格式表信息长度: {}", finalResult.length());
         return finalResult;
     }
     

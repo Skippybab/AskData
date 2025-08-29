@@ -35,33 +35,6 @@ public class MySqlIntrospector implements ExternalDbIntrospector {
 	}
 
 	@Override
-	public List<ColumnMeta> listColumns(DataSource ds, String databaseName, String tableName) {
-		String sql = "select ordinal_position, column_name, data_type, is_nullable, column_default, ifnull(column_comment,'') as column_comment from information_schema.columns where table_schema = ? and table_name = ? order by ordinal_position";
-		List<ColumnMeta> list = new ArrayList<>();
-		try (Connection c = ds.getConnection(); PreparedStatement ps = c.prepareStatement(sql)) {
-			ps.setString(1, databaseName);
-			ps.setString(2, tableName);
-			try (ResultSet rs = ps.executeQuery()) {
-				while (rs.next()) {
-					ColumnMeta m = new ColumnMeta();
-					m.ordinal = rs.getInt("ordinal_position");
-					m.columnName = rs.getString("column_name");
-					m.dbDataType = rs.getString("data_type");
-					m.normType = TypeMapper.toNormType(m.dbDataType);
-					String isNullable = rs.getString("is_nullable");
-					m.isNullable = ("YES".equalsIgnoreCase(isNullable) ? 1 : 0);
-					m.columnDefault = rs.getString("column_default");
-					m.columnComment = rs.getString("column_comment");
-					list.add(m);
-				}
-			}
-		} catch (Exception e) {
-			throw new RuntimeException("列元数据探查失败: " + e.getMessage(), e);
-		}
-		return list;
-	}
-
-	@Override
 	public String getTableDdl(DataSource ds, String tableName) {
 		String sql = "SHOW CREATE TABLE " + tableName;
 		try (Connection c = ds.getConnection(); 

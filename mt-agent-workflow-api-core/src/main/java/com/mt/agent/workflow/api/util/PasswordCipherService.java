@@ -16,18 +16,6 @@ public class PasswordCipherService {
     private static final int GCM_TAG_LENGTH = 128;
     private static final int IV_LENGTH = 12;
 
-    // 示例密钥生成（生产请从配置中心加载固定密钥并支持轮换）
-    public static byte[] generateKey() {
-        try {
-            KeyGenerator kg = KeyGenerator.getInstance(AES);
-            kg.init(128);
-            SecretKey key = kg.generateKey();
-            return key.getEncoded();
-        } catch (Exception e) {
-            throw new RuntimeException("生成密钥失败", e);
-        }
-    }
-
     public static byte[] encrypt(byte[] key, String plain) {
         try {
             byte[] iv = new byte[IV_LENGTH];
@@ -78,14 +66,6 @@ public class PasswordCipherService {
     public static String decryptToStringFromString(byte[] key, String base64Cipher) {
         byte[] cipherWithIv = Base64.getDecoder().decode(base64Cipher);
         return decryptToString(key, cipherWithIv);
-    }
-
-    public static String encodeKeyBase64(byte[] key) {
-        return Base64.getEncoder().encodeToString(key);
-    }
-
-    public static byte[] decodeKeyBase64(String base64) {
-        return Base64.getDecoder().decode(base64);
     }
 }
 
