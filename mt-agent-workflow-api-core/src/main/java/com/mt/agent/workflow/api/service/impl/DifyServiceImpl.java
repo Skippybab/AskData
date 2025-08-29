@@ -1,6 +1,7 @@
 package com.mt.agent.workflow.api.service.impl;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.mt.agent.workflow.api.config.DifyConfig;
 import com.mt.agent.workflow.api.service.DifyService;
 import lombok.extern.slf4j.Slf4j;
@@ -116,6 +117,7 @@ public class DifyServiceImpl implements DifyService {
         requestBody.put("user", user);
 
         log.info("Dify API输入参数详情:");
+        log.info("  - URL: {}", url);
         log.info("  - all_table_names长度: {}", allTableNames != null ? allTableNames.length() : 0);
         log.info("  - input: {}", userInput);
         log.info("  - history处理后: {}", buildHistoryString(history));
@@ -146,7 +148,23 @@ public class DifyServiceImpl implements DifyService {
                 })
                 .bodyToMono(String.class)
                 .timeout(Duration.ofMinutes(5))
-                .doOnNext(data -> log.debug("收到Dify workflow阻塞式响应，长度: {}", data.length()))
+                .doOnNext(data -> {
+                    // log.debug("收到Dify workflow阻塞式响应，内容: {}", data);
+                    try {
+                        // 解析JSON响应，提取output内容
+                        ObjectMapper objectMapper = new ObjectMapper();
+                        JsonNode jsonNode = objectMapper.readTree(data);
+                        if (jsonNode.has("data") && jsonNode.get("data").has("outputs")) {
+                            JsonNode outputs = jsonNode.get("data").get("outputs");
+                            if (outputs.has("text")) {
+                                String outputText = outputs.get("text").asText();
+                                log.info("收到Dify workflow阻塞式响应内容: {}", outputText);
+                            }
+                        }
+                    } catch (Exception e) {
+                        log.warn("解析Dify API响应JSON失败: {}", e.getMessage());
+                    }
+                })
                 .doOnError(error -> log.error("Dify workflow API调用失败: {}", error.getMessage(), error))
                 .doOnSuccess(data -> log.info("Dify workflow API调用完成，响应长度: {}", data.length()))
                 .retryWhen(Retry.backoff(3, Duration.ofSeconds(1))

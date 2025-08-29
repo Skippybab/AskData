@@ -323,12 +323,22 @@ public class DdlParser {
 
     private static String extractComment(String remaining) {
         try {
+            // 处理嵌套引号格式：'''content''' -> content
+            Pattern nestedQuoted = Pattern.compile("COMMENT\\s+'''([^']*?)'''", Pattern.CASE_INSENSITIVE);
+            Matcher nestedMatcher = nestedQuoted.matcher(remaining);
+            if (nestedMatcher.find()) {
+                return nestedMatcher.group(1);
+            }
+            
+            // 处理标准单引号格式：'content' 或 带转义的 'con''tent'
             Pattern singleQuoted = Pattern.compile("COMMENT\\s+'((?:''|[^'])*)'", Pattern.CASE_INSENSITIVE);
-            Pattern doubleQuoted = Pattern.compile("COMMENT\\s+\"([^\"]*)\"", Pattern.CASE_INSENSITIVE);
             Matcher m1 = singleQuoted.matcher(remaining);
             if (m1.find()) {
                 return m1.group(1).replace("''", "'");
             }
+            
+            // 处理双引号格式："content"
+            Pattern doubleQuoted = Pattern.compile("COMMENT\\s+\"([^\"]*)\"", Pattern.CASE_INSENSITIVE);
             Matcher m2 = doubleQuoted.matcher(remaining);
             if (m2.find()) {
                 return m2.group(1);

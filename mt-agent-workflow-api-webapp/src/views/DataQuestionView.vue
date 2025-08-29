@@ -7,7 +7,7 @@
         <el-button type="text" @click="showSessionList = !showSessionList" icon="el-icon-menu">
           会话列表
         </el-button>
-        <el-button type="primary" @click="createSession">新建会话</el-button>
+        <el-button type="primary" @click="startNewSession">新建会话</el-button>
       </div>
     </div>
 
@@ -35,6 +35,15 @@
             <div class="session-meta">
               <span class="session-time">{{ formatSessionTime(session.lastMessageAtMs || session.createdAtMs) }}</span>
               <span class="session-count">{{ session.messageCount || 0 }}条</span>
+              <el-button 
+                type="text" 
+                size="small" 
+                class="session-delete-btn"
+                @click.stop="confirmDeleteSession(session)"
+              >
+                <el-icon style="margin-right:4px; color:#f56c6c"><Delete /></el-icon>
+                删除
+              </el-button>
             </div>
           </div>
           <div v-if="historySessions.length === 0 && !sessionLoading" class="empty-sessions">
@@ -241,10 +250,40 @@
             <h3>
               <i class="el-icon-data-board" style="margin-right: 8px; color: #409eff;"></i>
               表信息面板
+              <el-tag v-if="isCustomTableInfo" type="warning" size="mini" style="margin-left: 8px;">
+                已自定义
+              </el-tag>
+              <el-tag v-else type="info" size="mini" style="margin-left: 8px;">
+                自动生成
+              </el-tag>
             </h3>
-            <el-button type="text" @click="refreshTableInfo" :loading="tableInfoLoading" icon="el-icon-refresh" size="small">
-              刷新
-            </el-button>
+            <div class="sidebar-actions">
+              <el-button type="text" @click="refreshTableInfo" :loading="tableInfoLoading" icon="el-icon-refresh" size="small">
+                刷新
+              </el-button>
+              <el-button 
+                type="text" 
+                @click="saveCustomTableInfo" 
+                :loading="savingTableInfo" 
+                icon="el-icon-check" 
+                size="small"
+                :disabled="selectedTables.length === 0"
+                style="color: #67c23a;"
+              >
+                保存
+              </el-button>
+              <el-button 
+                type="text" 
+                @click="resetCustomTableInfo" 
+                :loading="resettingTableInfo" 
+                icon="el-icon-refresh-left" 
+                size="small"
+                :disabled="selectedTables.length === 0 || !isCustomTableInfo"
+                style="color: #f56c6c;"
+              >
+                重置
+              </el-button>
+            </div>
           </div>
           
           <div class="sidebar-content">
@@ -266,15 +305,20 @@
                 </el-tooltip>
               </div>
               <div class="section-content">
-                <el-scrollbar height="200px">
-                  <div v-if="currentTableInfo && currentTableInfo !== '暂无表信息'" class="info-container">
-                    <pre class="table-info-content">{{ currentTableInfo }}</pre>
-                  </div>
-                  <div v-else class="empty-content">
-                    <i class="el-icon-document"></i>
-                    <p>{{ currentTableInfo || '暂无表信息' }}</p>
-                  </div>
-                </el-scrollbar>
+                <div v-if="currentTableInfo && currentTableInfo !== '暂无表信息'" class="info-container">
+                  <el-input
+                    v-model="editableTableInfo"
+                    type="textarea"
+                    :rows="8"
+                    :placeholder="currentTableInfo || '暂无表信息'"
+                    class="editable-table-info"
+                    :disabled="selectedTables.length === 0"
+                  />
+                </div>
+                <div v-else class="empty-content">
+                  <i class="el-icon-document"></i>
+                  <p>{{ currentTableInfo || '暂无表信息' }}</p>
+                </div>
               </div>
             </div>
             
@@ -288,15 +332,20 @@
                 </el-tooltip>
               </div>
               <div class="section-content">
-                <el-scrollbar height="200px">
-                  <div v-if="currentTableSchema && currentTableSchema !== '暂无表结构信息'" class="info-container">
-                    <pre class="table-schema-content">{{ currentTableSchema }}</pre>
-                  </div>
-                  <div v-else class="empty-content">
-                    <i class="el-icon-document"></i>
-                    <p>{{ currentTableSchema || '暂无表结构信息' }}</p>
-                  </div>
-                </el-scrollbar>
+                <div v-if="currentTableSchema && currentTableSchema !== '暂无表结构信息'" class="info-container">
+                  <el-input
+                    v-model="editableTableSchema"
+                    type="textarea"
+                    :rows="8"
+                    :placeholder="currentTableSchema || '暂无表结构信息'"
+                    class="editable-table-schema"
+                    :disabled="selectedTables.length === 0"
+                  />
+                </div>
+                <div v-else class="empty-content">
+                  <i class="el-icon-document"></i>
+                  <p>{{ currentTableSchema || '暂无表结构信息' }}</p>
+                </div>
               </div>
             </div>
             
@@ -330,7 +379,9 @@
 
 <script setup>
 import { ref, onMounted, nextTick } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { chatApi } from '../api/chat.js'
+import { Delete } from '@element-plus/icons-vue'
 
 // 状态管理
 const currentSession = ref(null)
@@ -354,13 +405,21 @@ const currentTableInfo = ref('')
 const currentTableSchema = ref('')
 const tableInfoLoading = ref(false)
 
+// 表信息编辑状态
+const editableTableInfo = ref('')
+const editableTableSchema = ref('')
+const isCustomTableInfo = ref(false)
+const savingTableInfo = ref(false)
+const resettingTableInfo = ref(false)
+
 // 加载历史会话列表
 const loadHistorySessions = async () => {
   sessionLoading.value = true
   try {
-    const response = await fetch('/api/chat/sessions?current=1&size=50')
-    const result = await response.json()
-    if (result.code === 200 && result.data) {
+    const result = await chatApi.getSessions({ current: 1, size: 50 })
+    console.log('历史会话列表响应:', result)
+    
+    if (result && result.data) {
       historySessions.value = result.data.records || []
       
       // 如果没有当前会话且有历史会话，自动选择最近的一个
@@ -374,6 +433,49 @@ const loadHistorySessions = async () => {
     ElMessage.error('加载历史会话失败')
   } finally {
     sessionLoading.value = false
+  }
+}
+
+// 确认并删除会话
+const confirmDeleteSession = async (session) => {
+  try {
+    await ElMessageBox.confirm(
+      `确定要删除会话“${getDisplaySessionName(session)}”吗？删除后将无法恢复。`,
+      '删除确认',
+      {
+        confirmButtonText: '删除',
+        cancelButtonText: '取消',
+        type: 'warning'
+      }
+    )
+    // 执行删除
+    await deleteSessionById(session.id)
+  } catch (e) {
+    // 取消删除，无需处理
+  }
+}
+
+// 删除会话（调用后端）
+const deleteSessionById = async (sessionId) => {
+  try {
+    const result = await chatApi.deleteSession(sessionId)
+    if (result && result.code === 200) {
+      ElMessage.success('删除成功')
+      // 如果删除的是当前会话，清空当前上下文并回到数据库选择
+      if (currentSession.value && currentSession.value.id === sessionId) {
+        currentSession.value = null
+        messages.value = []
+        selectedTables.value = []
+        currentDatabase.value = null
+      }
+      // 刷新历史列表
+      await loadHistorySessions()
+    } else {
+      ElMessage.error(result?.message || '删除失败')
+    }
+  } catch (error) {
+    console.error('删除会话失败:', error)
+    ElMessage.error('删除会话失败')
   }
 }
 
@@ -410,9 +512,10 @@ const switchToSession = async (session) => {
 // 加载会话消息
 const loadSessionMessages = async (sessionId) => {
   try {
-    const response = await fetch(`/api/chat/sessions/${sessionId}/messages`)
-    const result = await response.json()
-    if (result.code === 200 && result.data) {
+    const result = await chatApi.getMessages(sessionId)
+    console.log('会话消息响应:', result)
+    
+    if (result && result.data) {
       // 转换后端消息格式为前端格式
       messages.value = result.data.map(msg => convertBackendMessage(msg))
       scrollToBottom()
@@ -462,6 +565,30 @@ const extractSqlFromContent = (content) => {
   if (!content) return ''
   const sqlMatch = content.match(/```sql\s*([\s\S]*?)\s*```/i)
   return sqlMatch ? sqlMatch[1].trim() : ''
+}
+
+// 尝试解析结果为表格数据
+const tryParseAsTable = (result) => {
+  if (!result || typeof result !== 'string') return false
+  
+  try {
+    // 检查是否包含JSON数组格式的数据
+    const jsonMatch = result.match(/\[{.*?}\]/s)
+    if (jsonMatch) {
+      const jsonStr = jsonMatch[0]
+        .replace(/'/g, '"')
+        .replace(/None/g, 'null')
+        .replace(/True/g, 'true')
+        .replace(/False/g, 'false')
+      
+      const parsed = JSON.parse(jsonStr)
+      return Array.isArray(parsed) && parsed.length > 0 && typeof parsed[0] === 'object'
+    }
+    
+    return false
+  } catch (error) {
+    return false
+  }
 }
 
 // 格式化会话时间
@@ -559,6 +686,46 @@ const checkDatabaseConnection = async (database) => {
   }
 }
 
+// 开始新建会话 - 重置到数据库选择界面
+const startNewSession = async () => {
+  try {
+    // 如果当前有会话且有消息，询问用户确认
+    if (currentSession.value && messages.value.length > 0) {
+      await ElMessageBox.confirm(
+        '创建新会话将清空当前对话内容，确定要继续吗？',
+        '确认新建会话',
+        {
+          confirmButtonText: '确定',
+          cancelButtonText: '取消',
+          type: 'warning',
+        }
+      )
+    }
+    
+    // 清空当前会话状态
+    currentSession.value = null
+    messages.value = []
+    selectedTables.value = []
+    selectedDatabase.value = null
+    currentDatabase.value = null
+    
+    // 重置表信息
+    currentTableInfo.value = ''
+    currentTableSchema.value = ''
+    editableTableInfo.value = ''
+    editableTableSchema.value = ''
+    isCustomTableInfo.value = false
+    
+    // 关闭会话列表
+    showSessionList.value = false
+    
+    ElMessage.success('已清空当前会话，请选择数据库创建新会话')
+  } catch (error) {
+    // 用户取消操作，不做任何处理
+    console.log('用户取消新建会话')
+  }
+}
+
 // 创建新会话
 const createSession = async () => {
   if (!selectedDatabase.value) {
@@ -567,23 +734,30 @@ const createSession = async () => {
   }
   
   try {
-    const response = await fetch('/api/chat/sessions', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        sessionName: '数据问答会话 ' + new Date().toLocaleString('zh-CN', { 
-          year: 'numeric', 
-          month: '2-digit', 
-          day: '2-digit', 
-          hour: '2-digit', 
-          minute: '2-digit' 
-        }),
-        dbConfigId: selectedDatabase.value
-      })
-    })
+    console.log('创建会话，选择的数据库ID:', selectedDatabase.value)
     
-    const result = await response.json()
-    if (result.code === 200) {
+    // 生成更友好且兼容的会话名称格式
+    const now = new Date()
+    const dateStr = now.toLocaleString('zh-CN', { 
+      year: 'numeric', 
+      month: '2-digit', 
+      day: '2-digit', 
+      hour: '2-digit', 
+      minute: '2-digit' 
+    }).replace(/\//g, '-').replace(/:/g, '-') // 将特殊字符替换为连字符
+    
+    const sessionData = {
+      sessionName: '数据问答会话 ' + dateStr,
+      dbConfigId: selectedDatabase.value
+    }
+    
+    console.log('创建会话请求数据:', sessionData)
+    
+    // 使用统一的API调用
+    const result = await chatApi.createSession(sessionData)
+    console.log('创建会话响应:', result)
+    
+    if (result && result.data) {
       currentSession.value = result.data
       messages.value = []
       ElMessage.success('会话创建成功')
@@ -596,9 +770,13 @@ const createSession = async () => {
       
       // 加载表列表
       await loadTables()
+    } else {
+      console.error('创建会话失败: 响应数据异常', result)
+      ElMessage.error('创建会话失败: 响应数据异常')
     }
   } catch (error) {
-    ElMessage.error('创建会话失败')
+    console.error('创建会话异常:', error)
+    ElMessage.error('创建会话失败: ' + (error.message || '网络连接错误'))
   }
 }
 
@@ -866,15 +1044,34 @@ const loadTableInfo = async () => {
     if (result.code === 200 && result.data) {
       currentTableInfo.value = result.data.tableInfo || '暂无表信息'
       currentTableSchema.value = result.data.tableSchema || '暂无表结构信息'
+      
+      // 检查是否为用户自定义版本
+      isCustomTableInfo.value = result.data.isCustom === 'true' || result.data.isCustom === true
+      
+      // 初始化可编辑内容
+      editableTableInfo.value = currentTableInfo.value
+      editableTableSchema.value = currentTableSchema.value
+      
+      console.log('表信息加载完成:', {
+        isCustom: isCustomTableInfo.value,
+        tableInfoLength: currentTableInfo.value.length,
+        tableSchemaLength: currentTableSchema.value.length
+      })
     } else {
       currentTableInfo.value = '获取表信息失败'
       currentTableSchema.value = '获取表结构信息失败'
+      editableTableInfo.value = currentTableInfo.value
+      editableTableSchema.value = currentTableSchema.value
+      isCustomTableInfo.value = false
       console.error('获取表信息失败:', result.message)
     }
   } catch (error) {
     console.error('加载表信息失败:', error)
     currentTableInfo.value = '加载表信息时出错'
     currentTableSchema.value = '加载表结构信息时出错'
+    editableTableInfo.value = currentTableInfo.value
+    editableTableSchema.value = currentTableSchema.value
+    isCustomTableInfo.value = false
     ElMessage.error('加载表信息失败')
   } finally {
     tableInfoLoading.value = false
@@ -884,6 +1081,101 @@ const loadTableInfo = async () => {
 // 刷新表信息
 const refreshTableInfo = () => {
   loadTableInfo()
+}
+
+// 保存用户自定义的表信息
+const saveCustomTableInfo = async () => {
+  if (!currentSession.value || !currentSession.value.dbConfigId || selectedTables.value.length === 0) {
+    ElMessage.warning('请先选择表')
+    return
+  }
+  
+  if (!editableTableInfo.value.trim() || !editableTableSchema.value.trim()) {
+    ElMessage.warning('表信息不能为空')
+    return
+  }
+  
+  try {
+    savingTableInfo.value = true
+    
+    const requestBody = {
+      dbConfigId: currentSession.value.dbConfigId,
+      tableIds: selectedTables.value,
+      customTableInfo: editableTableInfo.value.trim(),
+      customTableSchema: editableTableSchema.value.trim()
+    }
+    
+    const response = await fetch('/api/table-info/save-custom-info', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(requestBody)
+    })
+    
+    const result = await response.json()
+    
+    if (result.code === 200) {
+      // 更新状态
+      currentTableInfo.value = editableTableInfo.value
+      currentTableSchema.value = editableTableSchema.value
+      isCustomTableInfo.value = true
+      
+      ElMessage.success('表信息保存成功')
+      console.log('自定义表信息保存成功')
+    } else {
+      ElMessage.error(result.message || '保存失败')
+      console.error('保存表信息失败:', result.message)
+    }
+  } catch (error) {
+    console.error('保存表信息失败:', error)
+    ElMessage.error('保存表信息失败: ' + error.message)
+  } finally {
+    savingTableInfo.value = false
+  }
+}
+
+// 重置为自动生成的表信息
+const resetCustomTableInfo = async () => {
+  if (!currentSession.value || !currentSession.value.dbConfigId) {
+    ElMessage.warning('请先选择数据库')
+    return
+  }
+  
+  try {
+    resettingTableInfo.value = true
+    
+    const requestBody = {
+      dbConfigId: currentSession.value.dbConfigId,
+      tableIds: selectedTables.value
+    }
+    
+    const response = await fetch('/api/table-info/reset-custom-info', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(requestBody)
+    })
+    
+    const result = await response.json()
+    
+    if (result.code === 200) {
+      ElMessage.success('已重置为自动生成的表信息')
+      console.log('表信息重置成功')
+      
+      // 重新加载表信息
+      await loadTableInfo()
+    } else {
+      ElMessage.error(result.message || '重置失败')
+      console.error('重置表信息失败:', result.message)
+    }
+  } catch (error) {
+    console.error('重置表信息失败:', error)
+    ElMessage.error('重置表信息失败: ' + error.message)
+  } finally {
+    resettingTableInfo.value = false
+  }
 }
 
 // 格式化文件大小
@@ -963,12 +1255,23 @@ onMounted(async () => {
       border-bottom: 1px solid #e8e8e8;
       display: flex;
       justify-content: space-between;
-      align-items: center;
+      align-items: flex-start;
       
       h3 {
         margin: 0;
         font-size: 16px;
         color: #333;
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+      
+      .sidebar-actions {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
       }
     }
     
@@ -1032,6 +1335,31 @@ onMounted(async () => {
               word-break: break-all;
               white-space: pre-wrap;
               border: 1px solid #e9ecef;
+            }
+            
+            .editable-table-info,
+            .editable-table-schema {
+              :deep(.el-textarea__inner) {
+                font-size: 12px;
+                line-height: 1.4;
+                font-family: 'Monaco', 'Consolas', monospace;
+                background: #f8f9fa;
+                border: 1px solid #e9ecef;
+                border-radius: 4px;
+                resize: vertical;
+                min-height: 180px;
+                
+                &:focus {
+                  border-color: #409eff;
+                  box-shadow: 0 0 0 2px rgba(64, 158, 255, 0.2);
+                }
+                
+                &:disabled {
+                  background: #f5f5f5;
+                  color: #999;
+                  cursor: not-allowed;
+                }
+              }
             }
           }
           

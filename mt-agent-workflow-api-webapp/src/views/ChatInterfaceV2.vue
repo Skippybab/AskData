@@ -455,7 +455,7 @@ const createOrSwitchSession = async () => {
       body: JSON.stringify({
         dbConfigId: selectedDatabase.value,
         tableId: selectedTable.value,
-        sessionName: `会话-${new Date().toLocaleString()}`
+        sessionName: `会话-${new Date().toLocaleString('zh-CN').replace(/[\/\:]/g, '-')}`
       })
     })
     const result = await response.json()
@@ -929,6 +929,7 @@ const loadSessionFromStorage = () => {
           
           i {
             background: linear-gradient(45deg, #fff, #f0f0f0);
+            background-clip: text;
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
           }

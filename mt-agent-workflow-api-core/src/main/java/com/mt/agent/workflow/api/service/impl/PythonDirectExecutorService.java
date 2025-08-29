@@ -1048,18 +1048,26 @@ public class PythonDirectExecutorService implements PythonExecutorService {
      * 获取表结构信息
      * 优先从缓存中获取TableSchema，如果缓存中没有则回退到SchemaContextService
      */
-    private String getTableSchemaInfo(Long dbConfigId, String tableName,  String userId) {
+    private String getTableSchemaInfo(Long dbConfigId, String tableName, String userId) {
         try {
             // 优先从缓存中获取TableSchema
             String cachedTableSchema = bufferUtil.getField(userId, "TableSchema_result");
-//            log.info("tableName={}", cachedTableSchema);
             if (cachedTableSchema != null && !cachedTableSchema.trim().isEmpty()) {
-//                log.info("🔍 [SQL生成] 成功从缓存获取TableSchema，长度: {}", cachedTableSchema.length());
+                log.info("🔍 [SQL生成] 成功从缓存获取TableSchema，长度: {}", cachedTableSchema.length());
                 return cachedTableSchema;
             } else {
                 log.warn("🔍 [SQL生成] 缓存中未找到TableSchema，回退到SchemaContextService");
-                // 如果缓存中没有，回退到原来的方法
-                return schemaContextService.getTableSchema(dbConfigId, tableName);
+                
+                // 缓存未命中时的处理逻辑
+                String schemaFromService = schemaContextService.getTableSchema(dbConfigId, tableName);
+                
+                // 将获取的表结构信息存入缓存，供后续使用
+                if (schemaFromService != null && !schemaFromService.trim().isEmpty()) {
+                    bufferUtil.setField(userId, "TableSchema_result", schemaFromService, 24, java.util.concurrent.TimeUnit.HOURS);
+                    log.info("🔍 [SQL生成] 已将表结构信息存入缓存，长度: {}", schemaFromService.length());
+                }
+                
+                return schemaFromService;
             }
             
         } catch (Exception e) {
@@ -1094,7 +1102,7 @@ public class PythonDirectExecutorService implements PythonExecutorService {
     private Object execSQL(List<Object> args, String userId) {
         try {
             String sql = (String) args.get(0);
-//            log.info("🔍 [SQL执行] 执行SQL查询: {}", sql);
+            log.info("🔍 [SQL执行] 执行SQL查询: {}", sql);
 
             // 从参数中获取数据库配置ID
             Long dbConfigId = getDbConfigIdFromUserId(userId);
@@ -1109,7 +1117,7 @@ public class PythonDirectExecutorService implements PythonExecutorService {
 //            log.info("🔍 [SQL执行] SqlExecutionService调用完成");
             
             if (result.queryResult != null && result.queryResult.rows != null) {
-                log.info("🔍 [SQL执行] SQL执行成功，返回{}行数据", result.queryResult.rows.size());
+//                log.info("🔍 [SQL执行] SQL执行成功，返回{}行数据", result.queryResult.rows.size());
                 
                 // 将查询结果存储到缓冲区，供Python代码获取
                 String resultJson = objectMapper.writeValueAsString(result.queryResult);
@@ -1400,7 +1408,7 @@ public class PythonDirectExecutorService implements PythonExecutorService {
             if (!trimmed.startsWith("def ") && !trimmed.startsWith("class ") &&
                     !trimmed.startsWith("@") && !isVariableAssignment(trimmed)) {
                 structure.hasTopLevelCode = true;
-                log.info("🔍 [代码分析] 检测到顶级执行代码: {}", trimmed.length() > 50 ? trimmed.substring(0, 50) + "..." : trimmed);
+                log.info("🔍 [代码分析] 顶级执行代码: {}", trimmed.length() > 50 ? trimmed.substring(0, 50) + "..." : trimmed);
             }
         }
 

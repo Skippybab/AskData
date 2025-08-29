@@ -16,12 +16,12 @@ import com.mt.agent.workflow.api.util.SessionUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
-import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 @Slf4j
 @Service
@@ -48,10 +48,12 @@ public class ChatServiceImpl implements ChatService {
 
     @Override
     public ChatSession createSession(Long userId, String sessionName, Long dbConfigId, Long tableId) {
-        // 清理和验证会话名称
-        String cleanedName = SessionUtil.cleanSessionName(sessionName);
-        if (!SessionUtil.isValidSessionName(cleanedName)) {
-            throw new SessionException.InvalidSessionNameException(cleanedName);
+        // 使用增强的容错机制，确保会话名称有效
+        String safeName = SessionUtil.ensureValidSessionName(sessionName);
+        
+        // 记录原始名称和最终使用的名称，便于调试
+        if (!Objects.equals(sessionName, safeName)) {
+            log.info("会话名称已自动调整: 原始='{}' -> 最终='{}'", sessionName, safeName);
         }
         
         long now = System.currentTimeMillis();
@@ -59,7 +61,7 @@ public class ChatServiceImpl implements ChatService {
         ChatSession session = new ChatSession();
         session.setTenantId(0L); // 默认租户
         session.setUserId(userId);
-        session.setSessionName(cleanedName);
+        session.setSessionName(safeName);
         session.setDbConfigId(dbConfigId);
         session.setTableId(tableId); // 新增表ID字段
         session.setStatus(1);
@@ -71,17 +73,19 @@ public class ChatServiceImpl implements ChatService {
         sessionMapper.insert(session);
         
         // 记录审计日志
-        sessionAuditService.logSessionCreated(userId, session.getId(), cleanedName);
+        sessionAuditService.logSessionCreated(userId, session.getId(), safeName);
         
         return session;
     }
     
     @Override
     public ChatSession createSessionWithId(Long sessionId, Long userId, String sessionName, Long dbConfigId, Long tableId) {
-        // 清理和验证会话名称
-        String cleanedName = SessionUtil.cleanSessionName(sessionName);
-        if (!SessionUtil.isValidSessionName(cleanedName)) {
-            throw new SessionException.InvalidSessionNameException(cleanedName);
+        // 使用增强的容错机制，确保会话名称有效
+        String safeName = SessionUtil.ensureValidSessionName(sessionName);
+        
+        // 记录原始名称和最终使用的名称，便于调试
+        if (!Objects.equals(sessionName, safeName)) {
+            log.info("指定ID会话名称已自动调整: 原始='{}' -> 最终='{}'", sessionName, safeName);
         }
         
         long now = System.currentTimeMillis();
@@ -90,7 +94,7 @@ public class ChatServiceImpl implements ChatService {
         session.setId(sessionId); // 设置指定的会话ID
         session.setTenantId(0L); // 默认租户
         session.setUserId(userId);
-        session.setSessionName(cleanedName);
+        session.setSessionName(safeName);
         session.setDbConfigId(dbConfigId);
         session.setTableId(tableId); // 新增表ID字段
         session.setStatus(1);
@@ -101,14 +105,14 @@ public class ChatServiceImpl implements ChatService {
         
         try {
             sessionMapper.insert(session);
-            log.info("成功创建指定ID的会话, sessionId: {}, sessionName: {}", sessionId, cleanedName);
+            log.info("成功创建指定ID的会话, sessionId: {}, sessionName: {}", sessionId, safeName);
         } catch (Exception e) {
             log.error("创建指定ID的会话失败, sessionId: {}, error: {}", sessionId, e.getMessage());
             throw new RuntimeException("创建会话失败，可能是sessionId已存在: " + sessionId, e);
         }
         
         // 记录审计日志
-        sessionAuditService.logSessionCreated(userId, session.getId(), cleanedName);
+        sessionAuditService.logSessionCreated(userId, session.getId(), safeName);
         
         return session;
     }
@@ -191,25 +195,27 @@ public class ChatServiceImpl implements ChatService {
                 throw new SessionException.SessionAccessDeniedException(userId, sessionId);
             }
             
-            // 验证新名称
-            String cleanedName = SessionUtil.cleanSessionName(newName);
-            if (!SessionUtil.isValidSessionName(cleanedName)) {
-                throw new SessionException.InvalidSessionNameException(cleanedName);
+            // 使用增强的容错机制，确保新名称有效
+            String safeName = SessionUtil.ensureValidSessionName(newName);
+            
+            // 记录原始名称和最终使用的名称，便于调试
+            if (!Objects.equals(newName, safeName)) {
+                log.info("重命名会话名称已自动调整: 原始='{}' -> 最终='{}'", newName, safeName);
             }
             
             // 保存旧名称用于审计
             String oldName = session.getSessionName();
             
             // 更新会话名称
-            session.setSessionName(cleanedName);
+            session.setSessionName(safeName);
             session.setUpdatedAtMs(System.currentTimeMillis());
             
             int result = sessionMapper.updateById(session);
             if (result > 0) {
-                log.info("用户 {} 成功重命名会话 {} 为: {}", userId, sessionId, cleanedName);
+                log.info("用户 {} 成功重命名会话 {} 为: {}", userId, sessionId, safeName);
                 
                 // 记录审计日志
-                sessionAuditService.logSessionRenamed(userId, sessionId, oldName, cleanedName);
+                sessionAuditService.logSessionRenamed(userId, sessionId, oldName, safeName);
                 
                 return true;
             } else {
@@ -383,7 +389,7 @@ public class ChatServiceImpl implements ChatService {
                 return null;
             }
             
-            log.debug("成功获取会话信息, sessionId: {}, sessionName: {}", sessionId, session.getSessionName());
+//            log.debug("成功获取会话信息, sessionId: {}, sessionName: {}", sessionId, session.getSessionName());
             return session;
             
         } catch (Exception e) {

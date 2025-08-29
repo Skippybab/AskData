@@ -217,18 +217,18 @@ public class BufferUtil {
      * @param <T>        值类型
      */
     public <T> void setField(String userId, String field, T value, long expireTime, TimeUnit timeUnit) {
-        log.info("设置自定义域: {}, {}", userId, field);
+//        log.info("设置自定义域: {}, {}", userId, field);
         String fieldKey = getUserBufferKeyPrefix(userId) + field;
         RBucket<T> bucket = redissonClient.getBucket(fieldKey);
 
         if (expireTime <= 0) {
             // 永久保存
             bucket.set(value);
-            log.info("自定义域设置为永久保存: {}, {}", userId, field);
+//            log.info("自定义域设置为永久保存: {}, {}", userId, field);
         } else {
             // 设置过期时间
             bucket.set(value, expireTime, timeUnit);
-            log.info("自定义域设置过期时间: {}, {}, {} {}", userId, field, expireTime, timeUnit);
+//            log.info("自定义域设置过期时间: {}, {}, {} {}", userId, field, expireTime, timeUnit);
         }
     }
 

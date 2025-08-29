@@ -62,26 +62,55 @@ public class DataQuestionController {
             Long dbConfigId = dbConfigIdObj != null ? Long.valueOf(dbConfigIdObj.toString()) : null;
 
             
-            // 处理tableId参数，可能是数字ID或表名字符串
-            Object tableIdObj = requestBody.get("tableId");
-            Long tableId = null;
+            // 处理tableIds参数，支持数组或单个ID
+            Object tableIdsObj = requestBody.get("tableIds");
+            List<Long> tableIds = null;
+            Long tableId = null; // 保持向后兼容的单个tableId
             String tableName = null;
             
-            if (tableIdObj != null) {
-                String tableIdStr = tableIdObj.toString();
-                try {
-                    tableId = Long.valueOf(tableIdStr);
-                    log.info("📊 [数据问答] 使用表ID: {}", tableId);
-                } catch (NumberFormatException e) {
-                    // 如果不是数字，说明传递的是表名
-                    tableName = tableIdStr;
-                    log.info("📊 [数据问答] 使用表名: {}", tableName);
-                    // 根据表名查询表ID
+            if (tableIdsObj != null) {
+                if (tableIdsObj instanceof List) {
+                    // 处理tableIds数组
+                    tableIds = ((List<?>) tableIdsObj).stream()
+                        .map(id -> Long.valueOf(id.toString()))
+                        .collect(java.util.stream.Collectors.toList());
+//                    log.info("📊 [数据问答] 使用表ID数组: {}", tableIds);
+                    
+                    // 为了兼容现有的方法签名，使用第一个表ID作为主表ID
+                    if (!tableIds.isEmpty()) {
+                        tableId = tableIds.get(0);
+                    }
+                } else {
+                    // 兼容旧的单个tableId参数
+                    String tableIdStr = tableIdsObj.toString();
+                    try {
+                        tableId = Long.valueOf(tableIdStr);
+                        tableIds = java.util.Arrays.asList(tableId);
+                        log.info("📊 [数据问答] 使用单个表ID: {}", tableId);
+                    } catch (NumberFormatException e) {
+                        // 如果不是数字，说明传递的是表名
+                        tableName = tableIdStr;
+                        log.info("📊 [数据问答] 使用表名: {}", tableName);
+                    }
                 }
             }
             
-            log.info("📊 [数据问答] 解析参数: sessionId={}, question={}, dbConfigId={}, tableId={}, tableName={}", 
-                    sessionId, question, dbConfigId, tableId, tableName);
+            // 兼容处理单个tableId参数（如果没有tableIds参数）
+            if (tableIds == null && requestBody.get("tableId") != null) {
+                Object tableIdObj = requestBody.get("tableId");
+                String tableIdStr = tableIdObj.toString();
+                try {
+                    tableId = Long.valueOf(tableIdStr);
+                    tableIds = java.util.Arrays.asList(tableId);
+                    log.info("📊 [数据问答] 兼容模式使用表ID: {}", tableId);
+                } catch (NumberFormatException e) {
+                    tableName = tableIdStr;
+                    log.info("📊 [数据问答] 兼容模式使用表名: {}", tableName);
+                }
+            }
+            
+//            log.info("📊 [数据问答] 解析参数: sessionId={}, question={}, dbConfigId={}, tableIds={}, tableId={}, tableName={}",
+//                    sessionId, question, dbConfigId, tableIds, tableId, tableName);
             
             // 参数验证
             if (question == null || question.trim().isEmpty()) {
@@ -93,10 +122,19 @@ public class DataQuestionController {
                 return Result.error("请选择数据库");
             }
             
-            // 将dbConfigId存入缓存，供后续Python执行时使用
+            // 将dbConfigId和tableIds存入缓存，供后续Python执行时使用
             String userIdStr = userId.toString();
             bufferUtil.setFieldPermanent(userIdStr, "dbConfigId", dbConfigId.toString());
-            log.info("📊 [数据问答] 已将dbConfigId={}存入缓存，用户ID={}", dbConfigId, userIdStr);
+//            log.info("📊 [数据问答] 已将dbConfigId={}存入缓存，用户ID={}", dbConfigId, userIdStr);
+            
+            // 将选中的表ID列表存入缓存
+            if (tableIds != null && !tableIds.isEmpty()) {
+                String tableIdsJson = tableIds.stream()
+                    .map(String::valueOf)
+                    .collect(java.util.stream.Collectors.joining(","));
+                bufferUtil.setField(userIdStr, "current_table_ids", tableIdsJson, 24, java.util.concurrent.TimeUnit.HOURS);
+//                log.info("📊 [数据问答] 已将tableIds={}存入缓存，用户ID={}", tableIdsJson, userIdStr);
+            }
             
             // 调用编排服务处理数据问答
             DataQuestionResponse response = orchestratorService.processDataQuestionSync(sessionId, userId, question, dbConfigId, tableId, tableName);

@@ -3,9 +3,6 @@ package com.mt.agent.workflow.api.util;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
-
 /**
  * 表名格式化工具类
  * 用于生成标准格式的all_table_name，供大模型接口使用
@@ -67,69 +64,27 @@ public class TableNameFormatter {
         }
 
         try {
-            StringBuilder fieldsInfo = new StringBuilder();
-
-            // 更精确的字段匹配正则表达式
-            // 匹配格式：`字段名` 数据类型 [约束] [COMMENT '注释']
-            Pattern fieldPattern = Pattern.compile(
-                    "\\s*`([a-zA-Z_][a-zA-Z0-9_]*)`\\s+([a-zA-Z]+(?:\\([^)]*\\))?)\\s*(?:[^,]*?COMMENT\\s*'([^']*)')?[^,]*?(?:,|\\s*$)",
-                    Pattern.CASE_INSENSITIVE | Pattern.DOTALL
-            );
-
-            Matcher matcher = fieldPattern.matcher(tableDdl);
-            boolean hasFields = false;
-
-            while (matcher.find()) {
-                String fieldName = matcher.group(1);
-                String dataType = matcher.group(2);
-                String comment = matcher.group(3);
-
-                if (fieldName != null && !fieldName.trim().isEmpty()) {
-                    if (hasFields) {
-                        fieldsInfo.append("、");
-                    }
-
-                    // 优先使用字段注释，如果没有注释则使用字段名
-                    String fieldDescription = comment != null && !comment.trim().isEmpty()
-                            ? comment.trim()
-                            : fieldName;
-
-                    fieldsInfo.append(fieldDescription);
-
-                    hasFields = true;
-
-//                    log.debug("解析字段: {} -> {}", fieldName, fieldDescription);
-                }
+            // 使用DdlParser统一解析DDL
+            DdlParser.TableStructure structure = DdlParser.parseCreateTable(tableDdl);
+            if (structure == null || structure.getColumns() == null || structure.getColumns().isEmpty()) {
+                return null;
             }
 
-            // 处理最后一个字段（没有逗号结尾）
-            Pattern lastFieldPattern = Pattern.compile(
-                    "\\s*`?([a-zA-Z_][a-zA-Z0-9_]*)`?\\s+([a-zA-Z]+(?:\\([^)]*\\))?)\\s*(?:[^,]*?COMMENT\\s*'([^']*)')?[^,]*?(?:,|\\s*$)",
-                    Pattern.CASE_INSENSITIVE | Pattern.DOTALL
-            );
+            StringBuilder fieldsInfo = new StringBuilder();
+            boolean hasFields = false;
 
-            Matcher lastMatcher = lastFieldPattern.matcher(tableDdl);
-            while (lastMatcher.find()) {
-                String fieldName = lastMatcher.group(1);
-                String dataType = lastMatcher.group(2);
-                String comment = lastMatcher.group(3);
-
-                if (fieldName != null && !fieldName.trim().isEmpty()) {
-                    // 检查是否已经包含这个字段
-                    String fieldDescription = comment != null && !comment.trim().isEmpty()
-                            ? comment.trim()
-                            : fieldName;
-
-                    if (!fieldsInfo.toString().contains(fieldDescription)) {
-                        if (hasFields) {
-                            fieldsInfo.append("、");
-                        }
-
-                        fieldsInfo.append(fieldDescription);
-
-                        hasFields = true;
-                    }
+            for (DdlParser.ColumnInfo column : structure.getColumns()) {
+                if (hasFields) {
+                    fieldsInfo.append("、");
                 }
+
+                // 优先使用字段注释，如果没有注释则使用字段名
+                String fieldDescription = column.getComment() != null && !column.getComment().trim().isEmpty()
+                        ? column.getComment().trim()
+                        : column.getColumnName();
+
+                fieldsInfo.append(fieldDescription);
+                hasFields = true;
             }
 
             return hasFields ? fieldsInfo.toString() : null;
@@ -196,68 +151,29 @@ public class TableNameFormatter {
         }
 
         try {
-            StringBuilder fieldsInfo = new StringBuilder();
-
-            // 更精确的字段匹配正则表达式
-            // 匹配格式：`字段名` 数据类型 [约束] [COMMENT '注释']
-            Pattern fieldPattern = Pattern.compile(
-                    "\\s*`([a-zA-Z_][a-zA-Z0-9_]*)`\\s+([a-zA-Z]+(?:\\([^)]*\\))?)\\s*(?:[^,]*?COMMENT\\s*'([^']*)')?[^,]*?(?:,|\\s*$)",
-                    Pattern.CASE_INSENSITIVE | Pattern.DOTALL
-            );
-
-            Matcher matcher = fieldPattern.matcher(tableDdl);
-            boolean hasFields = false;
-
-            while (matcher.find()) {
-                String fieldName = matcher.group(1);
-                String dataType = matcher.group(2);
-                String comment = matcher.group(3);
-
-                if (fieldName != null && !fieldName.trim().isEmpty()) {
-                    if (hasFields) {
-                        fieldsInfo.append(",\n");
-                    }
-
-                    // 格式：字段名,数据类型,字段描述,
-                    fieldsInfo.append(fieldName).append(",")
-                            .append(dataType).append(",")
-                            .append(comment != null && !comment.trim().isEmpty() ? comment.trim() : "字段描述")
-                            .append(",");
-
-                    hasFields = true;
-
-//                    log.debug("解析字段(执行器格式): {} -> {}, {}, {}", fieldName, dataType, comment, "字段描述");
-                }
+            // 使用DdlParser统一解析DDL
+            DdlParser.TableStructure structure = DdlParser.parseCreateTable(tableDdl);
+            if (structure == null || structure.getColumns() == null || structure.getColumns().isEmpty()) {
+                return null;
             }
 
-            // 处理最后一个字段（没有逗号结尾）
-            Pattern lastFieldPattern = Pattern.compile(
-                    "\\s*`?([a-zA-Z_][a-zA-Z0-9_]*)`?\\s+([a-zA-Z]+(?:\\([^)]*\\))?)\\s*(?:[^,]*?COMMENT\\s*'([^']*)')?[^,]*?(?:,|\\s*$)",
-                    Pattern.CASE_INSENSITIVE | Pattern.DOTALL
-            );
+            StringBuilder fieldsInfo = new StringBuilder();
+            boolean hasFields = false;
 
-            Matcher lastMatcher = lastFieldPattern.matcher(tableDdl);
-            while (lastMatcher.find()) {
-                String fieldName = lastMatcher.group(1);
-                String dataType = lastMatcher.group(2);
-                String comment = lastMatcher.group(3);
-
-                if (fieldName != null && !fieldName.trim().isEmpty()) {
-                    // 检查是否已经包含这个字段
-                    if (!fieldsInfo.toString().contains(fieldName + ",")) {
-                        if (hasFields) {
-                            fieldsInfo.append(",\n");
-                        }
-
-                        // 格式：字段名,数据类型,字段描述,
-                        fieldsInfo.append(fieldName).append(",")
-                                .append(dataType).append(",")
-                                .append(comment != null && !comment.trim().isEmpty() ? comment.trim() : "字段描述")
-                                .append(",");
-
-                        hasFields = true;
-                    }
+            for (DdlParser.ColumnInfo column : structure.getColumns()) {
+                if (hasFields) {
+                    fieldsInfo.append("\n");
                 }
+
+                // 格式：字段名,数据类型,字段描述,
+                fieldsInfo.append(column.getColumnName()).append(",")
+                        .append(column.getDataType()).append(",")
+                        .append(column.getComment() != null && !column.getComment().trim().isEmpty() 
+                            ? column.getComment().trim() 
+                            : column.getColumnName()) // 使用字段名而不是"字段描述"
+                        .append(",");
+
+                hasFields = true;
             }
 
             return hasFields ? fieldsInfo.toString() : null;

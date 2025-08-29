@@ -44,13 +44,13 @@ public class SchemaController {
         List<TableInfo> tables = tableInfoMapper.selectList(qw);
         
         // 添加调试日志
-        log.info("查询数据库 {} 的表信息，共找到 {} 个表", dbConfigId, tables.size());
-        for (TableInfo table : tables) {
-            log.info("表: {}, enabled: {}, DDL长度: {}", 
-                    table.getTableName(), 
-                    table.getEnabled(), 
-                    table.getTableDdl() != null ? table.getTableDdl().length() : 0);
-        }
+//        log.info("查询数据库 {} 的表信息，共找到 {} 个表", dbConfigId, tables.size());
+//        for (TableInfo table : tables) {
+//            log.info("表: {}, enabled: {}, DDL长度: {}",
+//                    table.getTableName(),
+//                    table.getEnabled(),
+//                    table.getTableDdl() != null ? table.getTableDdl().length() : 0);
+//        }
         
         return Result.success(tables);
     }
