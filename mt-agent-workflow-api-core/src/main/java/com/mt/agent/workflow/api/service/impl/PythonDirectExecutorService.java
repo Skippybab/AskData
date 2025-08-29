@@ -940,7 +940,7 @@ public class PythonDirectExecutorService implements PythonExecutorService {
             String question = getCurrentQuestionFromUserId(userId);
             
             // 获取表结构信息
-            String tableSchema = getTableSchemaInfo(dbConfigId, tableName, userId);
+            String tableSchema = bufferUtil.getField(userId, "TableSchema_result");
             log.info("🔍 [SQL生成] 获取的tableSchema={}", tableSchema);
             
             // 调用AI服务生成SQL
@@ -1038,58 +1038,6 @@ public class PythonDirectExecutorService implements PythonExecutorService {
     }
 
     /**
-     * 获取表结构信息
-     * 优先从缓存中获取TableSchema，如果缓存中没有则回退到SchemaContextService
-     */
-    private String getTableSchemaInfo(Long dbConfigId, String tableName, String userId) {
-        try {
-            // 优先从缓存中获取TableSchema
-            String cachedTableSchema = bufferUtil.getField(userId, "TableSchema_result");
-            if (cachedTableSchema != null && !cachedTableSchema.trim().isEmpty()) {
-                log.info("🔍 [SQL生成] 成功从缓存获取TableSchema，长度: {}", cachedTableSchema.length());
-                return cachedTableSchema;
-            } else {
-                log.warn("🔍 [SQL生成] 缓存中未找到TableSchema，回退到SchemaContextService");
-                
-                // 缓存未命中时的处理逻辑
-                String schemaFromService = schemaContextService.getTableSchema(dbConfigId, tableName);
-                
-                // 将获取的表结构信息存入缓存，供后续使用
-                if (schemaFromService != null && !schemaFromService.trim().isEmpty()) {
-                    bufferUtil.setField(userId, "TableSchema_result", schemaFromService, 24, java.util.concurrent.TimeUnit.HOURS);
-                    log.info("🔍 [SQL生成] 已将表结构信息存入缓存，长度: {}", schemaFromService.length());
-                }
-                
-                return schemaFromService;
-            }
-            
-        } catch (Exception e) {
-            log.warn("🔍 [SQL生成] 获取表结构失败: {}, 使用默认表结构", e.getMessage());
-            // 返回默认表结构
-            return getDefaultTableSchema(tableName);
-        }
-    }
-
-    /**
-     * 获取默认表结构
-     */
-    private String getDefaultTableSchema(String tableName) {
-        if (tableName == null || tableName.isEmpty()) {
-            tableName = "data_table";
-        }
-        return String.format("""
-            表名: %s
-            字段:
-            - id: BIGINT, 主键
-            - name: VARCHAR(100), 名称  
-            - value: DECIMAL(10,2), 数值
-            - category: VARCHAR(50), 分类
-            - created_time: DATETIME, 创建时间
-            - status: INT, 状态(1-正常,0-禁用)
-            """, tableName);
-    }
-
-    /**
      * 执行SQL查询并返回结果
      */
     private Object execSQL(List<Object> args, String userId) {
@@ -1105,13 +1053,10 @@ public class PythonDirectExecutorService implements PythonExecutorService {
             }
 
             // 使用SqlExecutionService执行SQL
-//            log.info("🔍 [SQL执行] 调用SqlExecutionService执行SQL, dbConfigId: {}, sql: {}", dbConfigId, sql);
             SqlExecutionService.SqlExecutionResult result = sqlExecutionService.executeWithResult(dbConfigId, sql);
-//            log.info("🔍 [SQL执行] SqlExecutionService调用完成");
             
             if (result.queryResult != null && result.queryResult.rows != null) {
 //                log.info("🔍 [SQL执行] SQL执行成功，返回{}行数据", result.queryResult.rows.size());
-                
                 // 将查询结果存储到缓冲区，供Python代码获取
                 String resultJson = objectMapper.writeValueAsString(result.queryResult);
                 bufferUtil.setField(userId, "execution_result", resultJson, -1, TimeUnit.DAYS);
@@ -1121,7 +1066,6 @@ public class PythonDirectExecutorService implements PythonExecutorService {
                 log.warn("🔍 [SQL执行] SQL执行返回空结果");
                 return List.of();
             }
-            
         } catch (Exception e) {
             log.error("🔍 [SQL执行] SQL执行失败: {}", e.getMessage(), e);
             throw new RuntimeException("SQL执行失败: " + e.getMessage(), e);
@@ -1129,7 +1073,7 @@ public class PythonDirectExecutorService implements PythonExecutorService {
     }
 
     /**
-     * 从userId从缓存中获取数据库配置ID
+     * 用userId从缓存中获取数据库配置ID
      */
     private Long getDbConfigIdFromUserId(String userId) {
         try {

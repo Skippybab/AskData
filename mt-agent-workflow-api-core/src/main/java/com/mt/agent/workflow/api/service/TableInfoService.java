@@ -164,6 +164,13 @@ public class TableInfoService {
         queryWrapper.eq("enabled", 1);
         
         List<TableInfo> tableInfos = tableInfoMapper.selectList(queryWrapper);
+        
+        // 如果没有找到启用的表，自动启用所有表并重新查询
+        if (tableInfos.isEmpty()) {
+            log.warn("🔍 [TableInfoService] 没有找到启用的表，自动启用所有表");
+            enableAllTables(dbConfigId);
+            tableInfos = tableInfoMapper.selectList(queryWrapper);
+        }
 
         // 使用TableNameFormatter格式化每个表的信息，确保符合Dify接口格式要求
         StringBuilder result = new StringBuilder();
@@ -203,6 +210,13 @@ public class TableInfoService {
         queryWrapper.eq("enabled", 1);
 
         List<TableInfo> tableInfos = tableInfoMapper.selectList(queryWrapper);
+        
+        // 如果没有找到启用的表，自动启用所有表并重新查询
+        if (tableInfos.isEmpty()) {
+            log.warn("🔍 [TableInfoService] 没有找到启用的表，自动启用所有表");
+            enableAllTables(dbConfigId);
+            tableInfos = tableInfoMapper.selectList(queryWrapper);
+        }
 //        log.info("🔍 [TableInfoService] 查询到 {} 个指定表信息", tableInfos.size());
         
         // 生成TableSchema

@@ -13,7 +13,7 @@ import com.mt.agent.workflow.api.service.PythonExecutorService;
 import com.mt.agent.workflow.api.service.TableInfoService;
 import com.mt.agent.workflow.api.mapper.ChatMessageMapper;
 import com.mt.agent.workflow.api.util.BufferUtil;
-import com.mt.agent.workflow.api.util.TableSelectionHashUtil;
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -107,78 +107,58 @@ public class ChatOrchestratorServiceImpl implements ChatOrchestratorService {
             bufferUtil.setField(userIdStr, "current_session_id", sessionId.toString(), -1, java.util.concurrent.TimeUnit.DAYS);
             bufferUtil.setField(userIdStr, "current_question", question, -1, java.util.concurrent.TimeUnit.DAYS);
             
-            // 2. 获取表信息
+            // 2. 获取表信息（按session存储的简化版本）
             String tableInfo, tableableSchema;
             
-            // 首先从缓存获取当前选中的表ID列表
-            String currentTableIdsStr = bufferUtil.getField(userIdStr, "current_table_ids");
-            List<Long> currentTableIds = null;
-            if (currentTableIdsStr != null && !currentTableIdsStr.trim().isEmpty()) {
-                currentTableIds = java.util.Arrays.stream(currentTableIdsStr.split(","))
-                    .map(String::trim)
-                    .filter(s -> !s.isEmpty())
-                    .map(Long::valueOf)
-                    .collect(java.util.stream.Collectors.toList());
-            }
+            // 从session缓存获取表信息，并检查是否与当前请求匹配
+            String tableInfoKey = "session_table_info_" + sessionId;
+            String tableSchemaKey = "session_table_schema_" + sessionId;
+            String tableIdsKey = "session_table_ids_" + sessionId;
             
-            // 生成表选择的哈希值来标识唯一的表组合
-            String currentTableHash = TableSelectionHashUtil.generateTableSelectionHash(dbConfigId, currentTableIds);
+            tableInfo = bufferUtil.getField(userIdStr, tableInfoKey);
+            tableableSchema = bufferUtil.getField(userIdStr, tableSchemaKey);
             
-            // 优先尝试从缓存读取最新的表信息
-            String cachedTableInfo = bufferUtil.getField(userIdStr, "current_table_info");
-            String cachedTableSchema = bufferUtil.getField(userIdStr, "TableSchema_result");
-            String cachedTableHash = bufferUtil.getField(userIdStr, "table_selection_hash");
+            // 获取当前传入的表ID列表（来自DataQuestionController）
+            String currentTableIdsStr = bufferUtil.getField(userIdStr, tableIdsKey);
             
-            // 检查缓存的表信息是否与当前表选择匹配
-            if (cachedTableInfo != null && cachedTableSchema != null && 
-                currentTableHash.equals(cachedTableHash)) {
-                // 使用缓存的表信息
-                tableInfo = cachedTableInfo;
-                tableableSchema = cachedTableSchema;
-                log.info("🔍 [数据问答] 使用缓存的表信息, tableHash: {}, tableInfo长度: {}, tableSchema长度: {}", 
-                    currentTableHash, tableInfo.length(), tableableSchema.length());
-            } else {
-                // 缓存不匹配或过期，重新获取并更新缓存
-                log.warn("🔍 [数据问答] 缓存不匹配或过期，重新获取表信息. 当前hash: {}, 缓存hash: {}", 
-                    currentTableHash, cachedTableHash);
+            // 如果session缓存为空，使用默认逻辑生成
+            if (tableInfo == null || tableableSchema == null) {
+                log.info("🔍 [数据问答] Session缓存为空，使用默认逻辑生成表信息, sessionId: {}", sessionId);
                 
-                // 优先尝试获取用户自定义版本
-                String customTableInfo = bufferUtil.getField(userIdStr, "custom_table_info");
-                String customTableSchema = bufferUtil.getField(userIdStr, "custom_table_schema");
+                // 获取当前会话的表选择（已经在上面获取过了）
+                List<Long> currentTableIds = null;
+                if (currentTableIdsStr != null && !currentTableIdsStr.trim().isEmpty()) {
+                    currentTableIds = java.util.Arrays.stream(currentTableIdsStr.split(","))
+                        .map(String::trim)
+                        .filter(s -> !s.isEmpty())
+                        .map(Long::valueOf)
+                        .collect(java.util.stream.Collectors.toList());
+                }
                 
-                if (customTableInfo != null && customTableSchema != null && 
-                    currentTableHash.equals(cachedTableHash)) {
-                    // 使用用户自定义版本
-                    log.info("🔍 [数据问答] 使用用户自定义的表信息版本, tableHash: {}", currentTableHash);
-                    tableInfo = customTableInfo;
-                    tableableSchema = customTableSchema;
+                // 生成表信息
+                if (currentTableIds != null && !currentTableIds.isEmpty()) {
+                    tableInfo = tableInfoService.getSelectedTablesFormattedForDify(dbConfigId, currentTableIds, userId);
+                    tableableSchema = tableInfoService.getSelectedTablesFormattedForExecutor(dbConfigId, currentTableIds, userId);
+                } else if (tableId != null) {
+                    // 兼容模式：如果指定了单个表ID
+                    tableInfo = tableInfoService.getStandardTableNameForDify(dbConfigId, tableId, userId);
+                    tableableSchema = tableInfoService.getStandardTableNameForExecutor(dbConfigId, tableId, userId);
                 } else {
-                    // 使用自动生成版本
-                    if (currentTableIds != null && !currentTableIds.isEmpty()) {
-                        // 如果有选中的表ID列表，获取指定表的信息
-                        log.info("🔍 [数据问答] 获取指定表的格式化信息, tableIds: {}", currentTableIds);
-                        tableInfo = tableInfoService.getSelectedTablesFormattedForDify(dbConfigId, currentTableIds, userId);
-                        tableableSchema = tableInfoService.getSelectedTablesFormattedForExecutor(dbConfigId, currentTableIds, userId);
-                    } else if (tableId != null) {
-                        // 兼容模式：如果指定了单个表ID，获取单个表的信息
-                        log.info("🔍 [数据问答] 兼容模式：获取单个表的信息, tableId: {}", tableId);
-                        tableInfo = tableInfoService.getStandardTableNameForDify(dbConfigId, tableId, userId);
-                        tableableSchema = tableInfoService.getStandardTableNameForExecutor(dbConfigId, tableId, userId);
-                    } else {
-                        // 如果没有指定表ID，获取所有启用的表信息
-                        tableInfo = tableInfoService.getEnabledTablesFormattedForDify(dbConfigId, userId);
-                        tableableSchema = tableInfoService.getEnabledTablesFormattedForExecutor(dbConfigId, userId);
-                    }
+                    // 获取所有启用的表信息
+                    tableInfo = tableInfoService.getEnabledTablesFormattedForDify(dbConfigId, userId);
+                    tableableSchema = tableInfoService.getEnabledTablesFormattedForExecutor(dbConfigId, userId);
                 }
                 
-                // 更新缓存（仅在重新获取表信息时）
+                // 存储到session缓存
                 if (tableInfo != null && tableableSchema != null) {
-                    bufferUtil.setField(userIdStr, "current_table_info", tableInfo, 24, TimeUnit.HOURS);
-                    bufferUtil.setField(userIdStr, "TableSchema_result", tableableSchema, 24, TimeUnit.HOURS);
-                    bufferUtil.setField(userIdStr, "table_selection_hash", currentTableHash, 24, TimeUnit.HOURS);
-                    log.info("🔍 [数据问答] 缓存已更新: tableHash={}, tableInfo长度={}, tableSchema长度={}", 
-                        currentTableHash, tableInfo.length(), tableableSchema.length());
+                    bufferUtil.setField(userIdStr, tableInfoKey, tableInfo, 24, TimeUnit.HOURS);
+                    bufferUtil.setField(userIdStr, tableSchemaKey, tableableSchema, 24, TimeUnit.HOURS);
+                    log.info("🔍 [数据问答] 已存储到session缓存, sessionId: {}, tableInfo长度: {}, tableSchema长度: {}", 
+                        sessionId, tableInfo.length(), tableableSchema.length());
                 }
+            } else {
+                log.info("🔍 [数据问答] 使用session缓存的表信息, sessionId: {}, tableInfo长度: {}, tableSchema长度: {}", 
+                    sessionId, tableInfo.length(), tableableSchema.length());
             }
             
             if (tableInfo == null || tableInfo.trim().isEmpty()) {
@@ -189,10 +169,9 @@ public class ChatOrchestratorServiceImpl implements ChatOrchestratorService {
             }
 
             
-            // 兼容性：如果有tableId，也存储单个表ID
-            if (tableId != null) {
-                bufferUtil.setField(userIdStr, "current_table_id", tableId.toString(), -1, java.util.concurrent.TimeUnit.DAYS);
-            }
+            // 存储到统一缓存供Python使用
+            bufferUtil.setField(userIdStr, "current_table_info", tableInfo, 24, TimeUnit.HOURS);
+            bufferUtil.setField(userIdStr, "TableSchema_result", tableableSchema, 24, TimeUnit.HOURS);
             // 检查超时
             if (System.currentTimeMillis() - startTime > timeoutMs) {
                 response.setSuccess(false);

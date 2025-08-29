@@ -124,13 +124,15 @@ public class DataQuestionController {
             bufferUtil.setFieldPermanent(userIdStr, "dbConfigId", dbConfigId.toString());
 //            log.info("📊 [数据问答] 已将dbConfigId={}存入缓存，用户ID={}", dbConfigId, userIdStr);
             
-            // 将选中的表ID列表存入缓存
+            // 将选中的表ID列表存入session缓存
             if (tableIds != null && !tableIds.isEmpty()) {
                 String tableIdsJson = tableIds.stream()
+                    .sorted() // 确保排序一致性
                     .map(String::valueOf)
                     .collect(java.util.stream.Collectors.joining(","));
-                bufferUtil.setField(userIdStr, "current_table_ids", tableIdsJson, 24, java.util.concurrent.TimeUnit.HOURS);
-//                log.info("📊 [数据问答] 已将tableIds={}存入缓存，用户ID={}", tableIdsJson, userIdStr);
+                String tableIdsKey = "session_table_ids_" + sessionId;
+                bufferUtil.setField(userIdStr, tableIdsKey, tableIdsJson, 24, java.util.concurrent.TimeUnit.HOURS);
+                log.info("📊 [数据问答] 已将tableIds={}存入session缓存，sessionId={}", tableIdsJson, sessionId);
             }
             
             // 调用编排服务处理数据问答

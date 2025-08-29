@@ -1033,7 +1033,8 @@ const loadTableInfo = async () => {
     tableInfoLoading.value = true
     
     const requestBody = {
-      dbConfigId: currentSession.value.dbConfigId
+      dbConfigId: currentSession.value.dbConfigId,
+      sessionId: currentSession.value.id
     }
     
     // 如果有选中的表，则只获取选中表的信息
@@ -1109,8 +1110,7 @@ const saveCustomTableInfo = async () => {
     savingTableInfo.value = true
     
     const requestBody = {
-      dbConfigId: currentSession.value.dbConfigId,
-      tableIds: selectedTables.value,
+      sessionId: currentSession.value.id,
       customTableInfo: editableTableInfo.value.trim(),
       customTableSchema: editableTableSchema.value.trim()
     }
@@ -1157,7 +1157,8 @@ const resetCustomTableInfo = async () => {
     
     const requestBody = {
       dbConfigId: currentSession.value.dbConfigId,
-      tableIds: selectedTables.value
+      tableIds: selectedTables.value,
+      sessionId: currentSession.value.id
     }
     
     const response = await fetch('/api/table-info/reset-custom-info', {
